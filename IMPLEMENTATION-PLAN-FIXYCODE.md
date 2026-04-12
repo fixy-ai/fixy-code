@@ -22,7 +22,7 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | v0 adapters | `@claude` (Claude Code), `@codex` (Codex CLI) |
 | Auth model | **Inherited env only.** Spawn subprocesses with `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH`. No re-auth. No credential storage inside Fixy Code. |
 | Routing handles | `@claude`, `@codex`, `@fixy` (reserved) |
-| Worker model | User-selected via `@fixy /worker-model <adapter>`. Fixy Code never ships its own models. To change the model *within* a provider (e.g. switch from Opus to Sonnet inside Claude Code), the user configures it inside the provider's own CLI settings — Fixy Code only routes between adapters, never between models inside an adapter. |
+| Worker | User-selected via `@fixy /worker <adapter>`. Fixy Code never ships its own models. To change the model *within* a provider, the user configures it inside the provider's own CLI settings — Fixy Code only routes between adapters. |
 | Isolation | One **git worktree per `(thread, agent)`** pair |
 | Pricing | **Free** $0 · **Pro** $10/user/mo · **Team** $20/workspace (≤3 seats) |
 | Free tier | Day 1 full access → then 3 active threads, 1 project, 30-day history, terminal only |
@@ -43,8 +43,8 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | Adapters | `@claude` via `claude` binary, `@codex` via `codex` binary (both required on PATH) |
 | Auth | Zero. Inherited `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH` passed through to child processes. |
 | Routing | `@claude`, `@codex`, `@fixy` mention dispatch inside one shared thread |
-| Worker model | `@fixy` answers via whichever adapter the user has set as the worker model |
-| Commands | `/all`, `/worker-model`, `/settings`, `/reset`, `/status` |
+| Worker | `@fixy` answers via whichever adapter the user has set as the worker |
+| Commands | `/all`, `/worker`, `/settings`, `/reset`, `/status` |
 | Isolation | `git worktree` per `(thread, agent)` under `.fixy/worktrees/<thread-id>/<agent>/` |
 | Persistence | Thread + message log JSON files under `~/.fixy/projects/<project-hash>/threads/<thread-id>.json` |
 | Streaming | Live stdout/stderr passthrough from adapter child processes to the terminal |
@@ -226,7 +226,7 @@ export interface FixyPatch {
 
 ```
 ~/.fixy/
-├── config.json                       # global config, fixy version, default worker model
+├── config.json                       # global config, fixy version, default worker
 ├── projects/
 │   └── <project-hash>/                # sha1(absolute projectRoot)
 │       ├── project.json               # projectRoot, title
@@ -248,8 +248,8 @@ The router owns every user message the moment it arrives. These rules are the fu
 
 1. **Explicit single mention.** If the message starts with exactly one `@<agent>` token and that agent is a known adapter, dispatch the rest of the message to that adapter only. Example: `@claude review the diff from @codex's last turn`.
 2. **Explicit multi mention.** If the message contains two or more `@<agent>` tokens at the start (e.g. `@claude @codex brainstorm this`), dispatch the remaining text to each mentioned adapter **sequentially in mention order**, feeding each subsequent adapter the full thread tail including the prior adapter's response. Max 3 adapters per turn.
-3. **`@fixy` reserved.** If the message starts with `@fixy`, the router does **not** dispatch to any external adapter. It parses the remainder as either a reserved slash command (see section 5) or a worker-model delegation. A bare `@fixy <text>` routes `<text>` to whichever adapter is currently configured as the worker model, but the response is attributed to `@fixy` in the thread.
-4. **No mention → last agent.** If the message has no `@<agent>` prefix, dispatch it to the last agent that spoke in this thread. On the very first message of a fresh thread with no prior agent turns, fall back to the configured worker model adapter.
+3. **`@fixy` reserved.** If the message starts with `@fixy`, the router does **not** dispatch to any external adapter. It parses the remainder as either a reserved slash command (see section 5) or a worker delegation. A bare `@fixy <text>` routes `<text>` to whichever adapter is currently configured as the worker, but the response is attributed to `@fixy` in the thread.
+4. **No mention → last agent.** If the message has no `@<agent>` prefix, dispatch it to the last agent that spoke in this thread. On the very first message of a fresh thread with no prior agent turns, fall back to the configured worker adapter.
 5. **Unknown mention → hard error.** If the message starts with `@<something>` that does not resolve to a registered adapter or to `fixy`, the router rejects the turn with `unknown agent: @<something>` and appends nothing to the thread. No silent fallback. This rule exists so a typo never burns a turn against the wrong adapter.
 
 **Agent-to-agent cross-talk** is achieved by the user: the user addresses `@claude review @codex's last turn`, and the router passes the full relevant message tail (including the prior `@codex` turn) into the Claude adapter's context. Adapters never call each other directly.
@@ -260,12 +260,12 @@ The router owns every user message the moment it arrives. These rules are the fu
 
 ## 5. `@fixy` Reserved Commands
 
-These four commands are the entire `@fixy` command surface in v0. Anything else after `@fixy` that is not one of these is treated under rule 3 (worker-model delegation).
+These four commands are the entire `@fixy` command surface in v0. Anything else after `@fixy` that is not one of these is treated under rule 3 (worker delegation).
 
 | Command | Signature | Behavior |
 |---|---|---|
 | `/all` | `@fixy /all <prompt>` | Trigger the **collaboration engine** (see Step 12). All registered thinker agents discuss the prompt together, agree on an implementation plan, break it into batches of max 5 TODOs, hand each batch to the worker(s), review the output, and iterate until the full plan is complete and approved. This is the core feature of Fixy Code. |
-| `/worker-model` | `@fixy /worker-model <adapterId>` | Set this thread's worker model to `<adapterId>`. Must resolve to a registered adapter. Persists in the thread's `workerModel` field. Takes effect immediately, including for the next bare-`@fixy` message. |
+| `/worker` | `@fixy /worker <adapterId>` | Set this thread's worker to `<adapterId>`. Must resolve to a registered adapter. Persists in the thread's `workerModel` field. Takes effect immediately, including for the next bare-`@fixy` message. |
 | `/settings` | `@fixy /settings [<key> <value>]` | View or update collaboration settings for this session. Without args, print current settings. With args, update one setting. Keys: `reviewMode` (`auto`/`ask_me`/`manual`), `collaborationMode` (`standard`/`critics`/`red_room`/`consensus`), `maxDiscussionRounds` (1–10), `maxReviewRounds` (1–5), `maxTodosPerBatch` (1–5), `workerCount` (1–5). Persists in `~/.fixy/settings.json`. |
 | `/reset` | `@fixy /reset` | Abort any in-flight adapter turn, clear all `agentSessions` in the thread (so the next invocation starts a fresh adapter session), and delete + recreate the thread worktree. Does **not** delete the thread or its message history. |
 | `/status` | `@fixy /status` | Print one line per registered adapter: `id`, `name`, `probe().available`, `probe().version`, `probe().authStatus`, plus the current `workerModel`, review mode, collaboration mode, and per-adapter `sessionId`s for this thread. |
@@ -476,12 +476,12 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 
 #### Step 9 — `@fixy` reserved commands runtime
 
-**Goal:** Implement `/worker-model`, `/verdict` (stubbed, real impl lands in Step 12), `/reset`, `/status` inside the turn controller from Step 6.
+**Goal:** Implement `/worker`, `/verdict` (stubbed, real impl lands in Step 12), `/reset`, `/status` inside the turn controller from Step 6.
 
 **Create:**
 - `/packages/core/src/fixy-commands.ts` — `FixyCommandRunner` class:
   - `run({ thread, rest, store, registry, worktreeManager })` — parses `rest`, dispatches:
-    - `/worker-model <id>` — validates `registry.require(id)`, updates `thread.workerModel`, persists, appends a system message `"worker model set to <id>"`.
+    - `/worker <id>` — validates `registry.require(id)`, updates `thread.workerModel`, persists, appends a system message `"worker set to <id>"`.
     - `/verdict` — Step 12 stub: prints `"verdict engine arrives in step 12"` as a system message. Will be replaced in Step 12.
     - `/reset` — aborts in-flight turns (via the `AbortController` held by the REPL), clears `thread.agentSessions = {}`, calls `worktreeManager.reset()` for each entry in `thread.worktrees`, persists, appends system message.
     - `/status` — loops over `registry.list()`, calls `adapter.probe()` for each, formats a table, appends one multi-line system message.
@@ -490,10 +490,10 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 - Tests: `fixy-commands.test.ts` — one test per command, using the Step 5 registry with two stub adapters.
 
 **Acceptance:**
-- `@fixy /worker-model claude` persists across a reload of the thread file.
+- `@fixy /worker claude` persists across a reload of the thread file.
 - `@fixy /reset` deletes worktrees under `~/.fixy/worktrees/<threadId>/` and recreates empty ones on the next turn.
 - `@fixy /status` prints adapter probe results for every registered adapter.
-- `@fixy explain your last answer` (no `/`) routes through the worker model adapter and the message is attributed to `@fixy` in the thread.
+- `@fixy explain your last answer` (no `/`) routes through the worker adapter and the message is attributed to `@fixy` in the thread.
 
 **Paperclip refs:** none — Paperclip has no equivalent user-visible command layer.
 
@@ -556,7 +556,7 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 - A user with `codex login` previously run in their terminal can type `@codex write a helper function` inside `fixy` and get a streamed response **without being prompted to log in**.
 - `@claude` and `@codex` can both run in the same thread, each in its own `(thread, agent)` worktree, with independent session resume.
 - `@fixy /status` now lists two adapters.
-- `@fixy /worker-model codex` successfully switches the worker model mid-thread.
+- `@fixy /worker codex` successfully switches the worker mid-thread.
 
 **Paperclip refs:**
 - `packages/adapters/codex-local/src/server/execute.ts` — the whole file, especially:
@@ -701,7 +701,7 @@ USER: @fixy /all Build OAuth refresh token support
 | **v0.2** | Homebrew tap `fixy-ai/tap`, `brew install fixy` | Keep the npm path too. The Homebrew formula just shells out to the same Node binary. |
 | **v0.3** | Unified `sessionCodec` so each adapter can serialize/deserialize its session into a neutral, human-readable form, enabling thread export/import and verdict replay | Mirrors Paperclip's `sessionCodec` concept (`claudeSessionCodec`, `codexSessionCodec` in `server/src/adapters/registry.ts` lines 95, 110). |
 | **v0.4** | Third adapter. Either `@gemini` via Gemini CLI or `@opencode` via OpenCode, chosen by whichever reference codebase is cleanest to port from Paperclip's `packages/adapters/*-local/` | Same `FixyAdapter` shape, same `buildInheritedEnv` discipline. |
-| **v0.5** | Context summarization / compaction | When a thread exceeds a configurable token budget, an out-of-band worker-model invocation summarizes older turns and replaces them in the message tail that gets sent to adapters. The full history is kept on disk untouched. |
+| **v0.5** | Context summarization / compaction | When a thread exceeds a configurable token budget, an out-of-band worker invocation summarizes older turns and replaces them in the message tail that gets sent to adapters. The full history is kept on disk untouched. |
 | **v1.0** | Stripe + Pro/Team gating | Free tier enforcement (3 active threads, 1 project, 30-day history). Billing runs as a tiny hosted service; Fixy Code calls it once per session to check entitlement. The CLI stays local-first — the server only sees tokens + counts, never prompts or diffs. |
 | **v1.1** | Tauri desktop app | A thin native wrapper around the same `@fixy/core` engine. No logic duplication. |
 | **v1.2** | VS Code extension | Same engine, called from an extension host. The editor surfaces threads, worktrees, and diffs natively. |
@@ -791,5 +791,5 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - Added `/all` and `/settings` to the reserved commands table.
 - Fixed §8: "private repo" → "public repo", "@fixy/cli@0.0.0" → "@fixy/placeholder@0.0.1".
 - Added probe results to §8 with dates and evidence.
-- Added worker-model clarification: Fixy routes between adapters, not between models within an adapter.
+- Added worker clarification: Fixy routes between adapters, not between models within an adapter.
 - **v0 launch deliverable added:** Record a 2-minute demo video showing the full collaboration loop as the launch artifact.
