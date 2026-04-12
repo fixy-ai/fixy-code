@@ -19,8 +19,13 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.0",
+    "eslint-plugin-import-x": "^4.16.2",
+    "eslint-plugin-n": "^17.24.0",
     "prettier": "^3.8.2",
     "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.1",
     "vitest": "^4.1.4"
   }
 }
