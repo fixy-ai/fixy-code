@@ -33,13 +33,24 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@20.19.39)(vite@8.0.8(@types/node@20.19.39))
 
-  packages/adapter-utils: {}
+  packages/adapter-utils:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
 
   packages/claude-adapter:
     dependencies:
       '@fixy/adapter-utils':
         specifier: workspace:*
         version: link:../adapter-utils
+      '@fixy/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
 
   packages/cli:
     dependencies:

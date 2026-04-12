@@ -51,21 +51,18 @@ export interface RunChildResult {
  * Appends `chunk` to `prev`, keeping the combined string within `cap` bytes.
  * When the cap is exceeded the oldest bytes are dropped (tail is preserved).
  */
-export function appendWithCap(
-  prev: string,
-  chunk: string,
-  cap = MAX_CAPTURE_BYTES,
-): string {
+export function appendWithCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYTES): string {
   const combined = prev + chunk;
   return combined.length > cap ? combined.slice(combined.length - cap) : combined;
 }
 
-function stripClaudeNestingVars(
-  env: Record<string, string>,
-): Record<string, string> {
-  const result = { ...env };
-  for (const key of CLAUDE_NESTING_VARS) {
-    delete result[key];
+function stripClaudeNestingVars(env: Record<string, string>): Record<string, string> {
+  const blocked = new Set<string>(CLAUDE_NESTING_VARS);
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (!blocked.has(k)) {
+      result[k] = v;
+    }
   }
   return result;
 }
@@ -80,9 +77,7 @@ function stripClaudeNestingVars(
  * untouched from the current process, strips Claude Code nesting-guard vars,
  * and finally layers caller-supplied `overrides` on top.
  */
-export function buildInheritedEnv(
-  overrides?: Record<string, string>,
-): Record<string, string> {
+export function buildInheritedEnv(overrides?: Record<string, string>): Record<string, string> {
   // Start from process.env, filtering out undefined values.
   const base: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
@@ -124,9 +119,7 @@ export function buildInheritedEnv(
  * If it is already set, returns the record unchanged.
  * Otherwise injects a sensible macOS/Linux default.
  */
-export function ensurePathInEnv(
-  env: Record<string, string>,
-): Record<string, string> {
+export function ensurePathInEnv(env: Record<string, string>): Record<string, string> {
   if (env['PATH'] && env['PATH'].length > 0) {
     return env;
   }
@@ -140,9 +133,7 @@ export function ensurePathInEnv(
  * Returns a shallow copy of `env` where any key matching `SENSITIVE_ENV_KEY`
  * has its value replaced with `'***REDACTED***'`.
  */
-export function redactEnvForLogs(
-  env: Record<string, string>,
-): Record<string, string> {
+export function redactEnvForLogs(env: Record<string, string>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
     result[k] = SENSITIVE_ENV_KEY.test(k) ? '***REDACTED***' : v;
@@ -184,9 +175,7 @@ export function runChildProcess(opts: RunChildOpts): Promise<RunChildResult> {
     for (const [k, v] of Object.entries(process.env)) {
       if (v !== undefined) rawEnv[k] = v;
     }
-    const mergedEnv = ensurePathInEnv(
-      stripClaudeNestingVars({ ...rawEnv, ...opts.env }),
-    );
+    const mergedEnv = ensurePathInEnv(stripClaudeNestingVars({ ...rawEnv, ...opts.env }));
 
     const stdinMode = opts.stdin != null ? 'pipe' : 'ignore';
 
@@ -295,25 +284,22 @@ export function runChildProcess(opts: RunChildOpts): Promise<RunChildResult> {
     // -----------------------------------------------------------------------
     // close / error
     // -----------------------------------------------------------------------
-    child.on(
-      'close',
-      (exitCode: number | null, exitSignal: NodeJS.Signals | null) => {
-        settled = true;
+    child.on('close', (exitCode: number | null, exitSignal: NodeJS.Signals | null) => {
+      settled = true;
 
-        if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
-        if (abortListener && opts.signal) {
-          opts.signal.removeEventListener('abort', abortListener);
-        }
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+      if (abortListener && opts.signal) {
+        opts.signal.removeEventListener('abort', abortListener);
+      }
 
-        resolve({
-          exitCode,
-          signal: exitSignal,
-          timedOut,
-          stdout: stdoutBuf,
-          stderr: stderrBuf,
-        });
-      },
-    );
+      resolve({
+        exitCode,
+        signal: exitSignal,
+        timedOut,
+        stdout: stdoutBuf,
+        stderr: stderrBuf,
+      });
+    });
 
     child.on('error', (err: Error) => {
       settled = true;
@@ -323,12 +309,7 @@ export function runChildProcess(opts: RunChildOpts): Promise<RunChildResult> {
         opts.signal.removeEventListener('abort', abortListener);
       }
 
-      reject(
-        new Error(
-          `Failed to spawn "${opts.command}": ${err.message}`,
-          { cause: err },
-        ),
-      );
+      reject(new Error(`Failed to spawn "${opts.command}": ${err.message}`, { cause: err }));
     });
   });
 }
