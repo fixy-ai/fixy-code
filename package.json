@@ -10,12 +10,17 @@
   "packageManager": "pnpm@10.31.0",
   "scripts": {
     "build": "pnpm -r run build",
-    "lint": "echo \"lint not configured yet\"",
+    "lint": "eslint packages/",
+    "lint:fix": "eslint packages/ --fix",
     "typecheck": "pnpm -r run typecheck",
-    "test": "echo \"test not configured yet\""
+    "test": "vitest run",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write ."
   },
   "license": "MIT",
   "devDependencies": {
-    "typescript": "^6.0.2"
+    "prettier": "^3.8.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
   }
 }
