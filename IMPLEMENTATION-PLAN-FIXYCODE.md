@@ -815,6 +815,151 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ---
 
+### Step 17 — Red Room & Disagreement Engine
+
+**Status:** 🔲 PENDING
+
+**Goal:** Add an explicit adversarial collaboration mode (`red_room`) where agents are forced to challenge each other's proposals. When agents disagree, Fixy surfaces a structured **choice panel** so the user can decide which approach wins — or ask the agents to find a middle ground.
+
+**Why:** Both design discussions agreed this is the core moat. Single-agent tools fail quietly by agreeing with bad instructions. Red Room engineers adversarial pressure on purpose. Cross-model disagreement (Claude vs Codex trained by different companies with different blind spots) produces objections that neither agent would generate alone.
+
+**User-facing commands:**
+```
+@fixy /red-room on    ← enable for this session
+@fixy /red-room off   ← disable (default: off)
+@fixy /settings set collaborationMode red_room   ← persist globally
+```
+
+**What the mode changes:**
+- When Codex receives Claude's proposal (or vice versa), the injected system instruction becomes: *"Find everything wrong with this. Be hostile to it. Your job is to break it. Do not validate."*
+- Default (`standard`) mode uses cooperative framing: *"Review this and suggest improvements."*
+
+**Disagreement panel** — shown whenever two agents give conflicting approaches:
+```
+╭──────────────────────────────────────────────────────╮
+│  ⚔  AGENTS DISAGREE — YOU DECIDE                     │
+│                                                        │
+│  @claude: use JWT refresh tokens (stateless)          │
+│  @codex:  use session cookies (simpler, more secure)  │
+│                                                        │
+│  [1] Go with @claude   [2] Go with @codex             │
+│  [3] Ask them to find a middle ground                  │
+╰──────────────────────────────────────────────────────╯
+```
+User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn dispatches accordingly.
+
+**Disagreement detection heuristics (v0):**
+- Agent B explicitly names Agent A's approach and contradicts it (`"this approach"`, `"instead"`, `"however"`, `"disagree"`, `"alternative"`)
+- Agents propose structurally different file changes (different function names, different modules)
+- Conflicting patches on the same file path
+
+**Files to create / modify:**
+- `packages/core/src/disagreement.ts` — `detectDisagreement(msgA, msgB): DisagreementResult | null`
+- `packages/core/src/settings.ts` (update) — add `redRoomMode: boolean` to `FixySettings`
+- `packages/core/src/fixy-commands.ts` (update) — inject adversarial framing when `redRoomMode` is on; detect disagreement after each cross-agent turn; emit choice panel if detected
+- `packages/cli/src/repl.ts` (update) — handle single-key `[1]` / `[2]` / `[3]` input during disagreement panel
+- `packages/core/src/__tests__/disagreement.test.ts` — unit tests for heuristics
+
+**Acceptance:**
+- `@fixy /red-room on` persists to settings; `@fixy /status` shows `red_room: on`
+- After two agents disagree, choice panel appears automatically
+- User types `1` → Claude's approach is locked in; `3` → agents negotiate
+- `@fixy /red-room off` restores cooperative framing
+- All existing tests still pass
+
+---
+
+### Step 18 — TUI Polish: Color, Model Display, / and @ Autocomplete
+
+**Status:** 🔲 PENDING
+
+**Goal:** Fix three UX issues discovered during live testing:
+1. **Color:** Change brand color from amber/yellow (`\x1b[33m`) to **light indigo** (`\x1b[38;5;105m` or closest 256-color match). Apply consistently to: startup panel borders, prompt `❯`, spinner, section headers.
+2. **Model display in header:** Show agent + active model in the startup panel instead of just `@claude · @codex`. Example: `@claude (claude-opus-4-5) · @codex (gpt-5.4 xhigh)`. Read model from `probe()` result or from a lightweight `getActiveModel()` method added to `FixyAdapter`.
+3. **`/` and `@` autocomplete menu:** When the user types `/` as the first character, show an inline menu of available slash commands (like Codex). When the user types `@`, show a menu of registered agents. No external library — implement with raw readline `keypress` events and ANSI cursor movement.
+
+**`/` menu (Codex-style):**
+```
+> /
+  /all          run collaboration engine on all agents
+  /worker       set the worker adapter for this thread
+  /settings     view or update global settings
+  /reset        abort current turn and reset agent sessions
+  /status       show adapter and session status
+  /red-room     toggle adversarial mode on/off
+  /quit         exit fixy
+```
+
+**`@` menu:**
+```
+> @
+  @claude   Claude Code (claude-opus-4-5)
+  @codex    OpenAI Codex (gpt-5.4 xhigh)
+  @fixy     Fixy worker / commands
+```
+
+**Codex `stdin` warning fix:** Codex currently emits `warning: Reading additional input from stdin...` to stderr. Filter this line in `codex-adapter`'s stderr handler (already has a noise filter for `ERROR codex_core::skills::loader` — add this alongside it).
+
+**Files to modify:**
+- `packages/cli/src/format.ts` — change `\x1b[33m` to indigo throughout; add model to `startupPanel()` signature
+- `packages/cli/src/repl.ts` — add keypress handler for `/` and `@`; wire model info from probe results
+- `packages/codex-adapter/src/index.ts` — filter `warning: Reading additional input from stdin` from stderr output
+- `packages/core/src/adapter.ts` (update) — add optional `getActiveModel?(): Promise<string | null>` to `FixyAdapter` interface
+- `packages/claude-adapter/src/index.ts` — implement `getActiveModel()` (parse from `claude --version` or config)
+- `packages/codex-adapter/src/index.ts` — implement `getActiveModel()` (parse model from `codex --version` or initial output)
+
+**Acceptance:**
+- Startup panel shows `@claude (model-name) · @codex (model-name)`
+- Brand color is light indigo everywhere (no yellow/amber remaining)
+- Typing `/` at the prompt shows command menu; typing `@` shows agent menu
+- `warning: Reading additional input from stdin` no longer appears in Codex output
+- All existing tests still pass
+
+---
+
+### Step 19 — Global Settings Persistence (`~/.fixy/settings.json`)
+
+**Status:** 🔲 PENDING
+
+**Goal:** Persist user preferences across sessions in `~/.fixy/settings.json`. Settings are readable and writable both from the REPL (`@fixy /settings`) and by direct file edit. Each thread can override global settings for that session.
+
+**Settings schema:**
+```ts
+interface FixySettings {
+  defaultWorker: string;          // adapter id, e.g. "claude"
+  collaborationMode: "standard" | "critics" | "red_room" | "consensus";
+  redRoomMode: boolean;           // shorthand for collaborationMode === "red_room"
+  reviewMode: "auto" | "ask_me" | "manual";
+  maxDiscussionRounds: number;    // 1–10, default 3
+  maxReviewRounds: number;        // 1–5, default 2
+  maxTodosPerBatch: number;       // 1–5, default 5
+  workerCount: number;            // 1–5, default 1
+}
+```
+
+**REPL commands:**
+```
+@fixy /settings                         ← print all settings
+@fixy /settings set defaultWorker codex ← update one key
+@fixy /settings reset                   ← restore defaults
+```
+
+**Files to create / modify:**
+- `packages/core/src/settings.ts` — `loadSettings()`, `saveSettings()`, `defaultSettings`
+- `packages/core/src/paths.ts` — `settingsPath()` → `~/.fixy/settings.json`
+- `packages/core/src/fixy-commands.ts` (update) — wire `/settings` command to read/write settings file
+- `packages/core/src/index.ts` (update) — export settings types and functions
+- `packages/core/src/__tests__/settings.test.ts` — load/save/reset/validate tests
+
+**Acceptance:**
+- `@fixy /settings` prints current values
+- `@fixy /settings set defaultWorker codex` persists; next `fixy` session uses codex as default worker
+- `@fixy /settings reset` restores all defaults
+- Invalid key names are rejected with a clear error
+- All existing tests still pass
+
+---
+
 ## 7. Post-v0 Roadmap
 
 | Version | Scope | Notes |
@@ -964,3 +1109,11 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - All TTY features are no-op when stdin/stdout is piped (safe for scripting).
 - 306 tests pass. Typecheck and build clean across all 5 packages.
 - slugify utility also added to `@fixy/core` (pure function, no dependencies) and exported from the package index — tested with 44 unit tests covering ASCII, diacritics, emoji, edge cases, and output invariants.
+
+### 2026-04-12 (session 6) — Steps 17–19 planned; design from claude-discussion.txt + gpt-discussion.txt
+
+- Read both design discussions in full. Extracted three new implementation steps.
+- **Step 17 (Red Room & Disagreement Engine):** Adversarial mode toggled by `@fixy /red-room on/off`. When on, Codex receives Claude's proposal with hostile framing ("find everything wrong, break it"). When agents produce conflicting approaches, a structured choice panel appears — user types `1`, `2`, or `3` (accept A / accept B / negotiate middle ground). Disagreement detected by heuristics: explicit contradiction keywords + conflicting patches on same file.
+- **Step 18 (TUI Polish):** Three fixes: (a) brand color changed from amber/yellow to light indigo, (b) startup header shows `@claude (model-name) · @codex (model-name)` instead of bare handles, (c) `/` and `@` typed at prompt show inline autocomplete menus (no external lib, raw ANSI). Also: filter Codex `warning: Reading additional input from stdin` stderr noise.
+- **Step 19 (Global Settings Persistence):** `~/.fixy/settings.json` stores `defaultWorker`, `collaborationMode`, `redRoomMode`, `reviewMode`, `maxDiscussionRounds`, etc. `@fixy /settings`, `@fixy /settings set <key> <value>`, `@fixy /settings reset` wired to read/write this file. Thread-level overrides possible.
+- Note: Step 19 consolidates and supersedes the earlier Step 14 draft (same feature, more complete spec).
