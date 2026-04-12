@@ -3,6 +3,7 @@
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { v7 as uuidv7 } from 'uuid';
 
 import type { FixyMessage, FixyThread } from './thread.js';
 import {
@@ -31,7 +32,7 @@ export class LocalThreadStore {
    * Writes project.json if it does not already exist.
    */
   async createThread(projectRoot: string): Promise<FixyThread> {
-    const id = randomUUID();
+    const id = uuidv7();
     const projectId = computeProjectId(projectRoot);
     const now = new Date().toISOString();
 

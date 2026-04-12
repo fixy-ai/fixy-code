@@ -179,7 +179,7 @@ The conversation is the product. The data model is deliberately flat, append-onl
 export type FixyRole = "user" | "agent" | "system";
 
 export interface FixyThread {
-  id: string;                         // uuid v7
+  id: string;                         // uuid v7 (time-ordered)
   projectId: string;                  // sha1 of projectRoot
   projectRoot: string;                // absolute path
   createdAt: string;                  // ISO 8601
@@ -193,7 +193,7 @@ export interface FixyThread {
 }
 
 export interface FixyMessage {
-  id: string;                         // uuid v7, monotonic by createdAt
+  id: string;                         // uuid v4
   createdAt: string;                  // ISO 8601
   role: FixyRole;
   /** For role=agent, the adapter id that produced this message. */
@@ -354,9 +354,9 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 **Create:**
 - `/packages/core/src/thread.ts` — the types from section 3 of this plan, exactly as written.
 - `/packages/core/src/store.ts` — `LocalThreadStore` class:
-  - `init(home = ~/.fixy)` — ensures `projects/` and `worktrees/` exist.
+  - `init()` — ensures `projects/` and `worktrees/` exist under the Fixy home directory (derived from `FIXY_HOME` env or `~/.fixy`).
   - `createThread(projectRoot)` — uuid v7, computes `projectId = sha1(projectRoot)`, writes `project.json` if new, writes empty thread file.
-  - `appendMessage(threadId, message)` — loads, pushes, rewrites atomically (`tmp` file + `fs.rename`).
+  - `appendMessage(threadId, projectRoot, message)` — loads, pushes, rewrites atomically (`tmp` file + `fs.rename`).
   - `getThread(threadId)` / `listThreads(projectRoot)` / `archiveThread(threadId)`.
 - `/packages/core/src/paths.ts` — resolves `~/.fixy/...` paths consistently.
 - Tests: `store.test.ts` — create, append 3 messages, reload, assert order and content preservation; assert atomic rewrite leaves no `*.tmp` file behind.
@@ -397,7 +397,7 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 
 **Create:**
 - `/packages/core/src/router.ts` — `Router` class:
-  - `parse(input: string): ParsedInput` — returns either `{ kind: "mentions", agentIds: string[], body: string }`, `{ kind: "fixy", rest: string }`, `{ kind: "bare", body: string }`, or `{ kind: "error", reason: string }`.
+  - `parse(input: string): ParsedInput` — returns either `{ kind: "mention", agentIds: string[], body: string }`, `{ kind: "fixy", rest: string }`, `{ kind: "bare", body: string }`, or `{ kind: "error", reason: string }`.
   - Implements rules 1–5 exactly.
 - `/packages/core/src/turn.ts` — `TurnController` class:
   - `runTurn({ thread, input, registry, store, onLog, onMeta, onSpawn, signal })`.
@@ -448,16 +448,15 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 **Create:**
 - `/packages/adapter-utils/src/server-utils.ts` — a trimmed, MIT-safe rewrite of the subset of Paperclip's `packages/adapter-utils/src/server-utils.ts` we actually need:
   - `runChildProcess(runId, command, args, opts)` — spawns, captures stdout/stderr with a cap, honors `opts.signal`, calls `onLog`/`onSpawn`, returns `{ exitCode, signal, timedOut, stdout, stderr, pid, startedAt }`.
-  - `ensureCommandResolvable(command, cwd, env)` — looks up the binary on PATH; throws a clean error if missing.
-  - `resolveCommandForLogs(command, cwd, env)` — returns the absolute path for the transcript.
+  - `resolveCommand(command)` — looks up the binary on PATH via `which`/`where`; throws a clean error if missing. Returns the absolute path.
   - `ensurePathInEnv(env)` — fills in a platform default PATH if the child would otherwise inherit an empty one.
   - `redactEnvForLogs(env)` — masks any env var name matching `/key|token|secret|password|authorization|cookie/i`.
   - `buildInheritedEnv(overrides)` — **THE critical helper**: starts from `process.env`, copies `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH` untouched, then layers `overrides` on top. This is how we achieve zero-re-auth.
 - `/packages/claude-adapter/src/index.ts` — exports a `FixyAdapter` with:
   - `id: "claude"`, `name: "Claude Code"`.
   - `probe()` — runs `claude --version`, parses, returns `{ available, version, authStatus: "unknown", detail: null }`. We do not probe auth actively in v0 because there is no cheap way to test Claude auth without burning a token; `authStatus` stays `"unknown"` and we let the first real turn surface auth errors naturally.
-  - `execute(ctx)` — builds args `["--print", "-", "--output-format", "stream-json", "--verbose"]`, appends `"--resume", ctx.session.sessionId` if a session is present, spawns via `runChildProcess` with `cwd = ctx.threadContext.worktreePath`, `env = buildInheritedEnv({})`, pipes `ctx.prompt` to stdin, streams stdout/stderr through `ctx.onLog`. Parses the final stream-json result to extract the new session id and the text summary. Returns a `FixyExecutionResult` with `session = { sessionId, params: {} }`.
-- Tests: `claude-adapter.test.ts` — uses a mock `claude` binary (a shell script on PATH via the test env) that prints a fixed stream-json payload, asserts that `execute()` returns the expected `summary`, preserves the session id, and that the child's `env.HOME` was inherited from `process.env.HOME`.
+  - `execute(ctx)` — builds args `["--print", "--output-format", "text"]`, appends `"--resume", ctx.session.sessionId` if a session is present, spawns via `runChildProcess` with `cwd = ctx.threadContext.worktreePath`, `env = buildInheritedEnv({})`, pipes `ctx.prompt` to stdin, streams stdout/stderr through `ctx.onLog`. Parses the output to extract the new session id and the text summary. Returns a `FixyExecutionResult` with `session = { sessionId, params: {} }`.
+- Tests: `adapter.test.ts` + `parse.test.ts` — uses a mock `claude` binary (a shell script on PATH via the test env), asserts that `execute()` returns the expected `summary`, preserves the session id, and that the child's `env.HOME` was inherited from `process.env.HOME`.
 
 **Acceptance:**
 - A user who is already logged into Claude Code (`claude login` previously run in their terminal) can type `@claude hello` inside `fixy` and get a live-streamed response **without being prompted to log in again**.
@@ -476,13 +475,13 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 
 #### Step 9 — `@fixy` reserved commands runtime
 
-**Goal:** Implement `/worker`, `/verdict` (stubbed, real impl lands in Step 12), `/reset`, `/status` inside the turn controller from Step 6.
+**Goal:** Implement `/worker`, `/all` (stubbed, real impl lands in Step 12), `/reset`, `/status` inside the turn controller from Step 6.
 
 **Create:**
 - `/packages/core/src/fixy-commands.ts` — `FixyCommandRunner` class:
   - `run({ thread, rest, store, registry, worktreeManager })` — parses `rest`, dispatches:
     - `/worker <id>` — validates `registry.require(id)`, updates `thread.workerModel`, persists, appends a system message `"worker set to <id>"`.
-    - `/verdict` — Step 12 stub: prints `"verdict engine arrives in step 12"` as a system message. Will be replaced in Step 12.
+    - `/all` — Step 12 stub: prints `"collaboration engine not yet implemented — arriving in Step 12"` as a system message. Replaced in Step 12 with the full 5-phase collaboration loop.
     - `/reset` — aborts in-flight turns (via the `AbortController` held by the REPL), clears `thread.agentSessions = {}`, calls `worktreeManager.reset()` for each entry in `thread.worktrees`, persists, appends system message.
     - `/status` — loops over `registry.list()`, calls `adapter.probe()` for each, formats a table, appends one multi-line system message.
   - Bare `@fixy <text>` (no leading `/`) — delegates to `registry.require(thread.workerModel).execute(...)` but the resulting message is stored with `agentId: "fixy"` so the UI attributes it correctly.
@@ -517,7 +516,7 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
   - Live-streams `onLog` chunks to stdout with an ANSI-colored prefix per agent (`[claude] `, `[codex] `, `[fixy] `).
   - On turn completion, prints the summary and warnings.
 - `/packages/cli/src/format.ts` — ANSI coloring helpers. Uses `picocolors`, not `chalk`, to keep the dep tree tiny.
-- `/packages/cli/bin/fixy.js` — `#!/usr/bin/env node` shim that imports `dist/cli.js`.
+- `/packages/cli/dist/cli.js` — compiled entry point with `#!/usr/bin/env node` shebang. `package.json` `bin` field points directly to `./dist/cli.js` (no separate shim file).
 - README at `/packages/cli/README.md` — install + usage in under 60 lines.
 
 **Acceptance:**
@@ -640,42 +639,24 @@ USER: @fixy /all Build OAuth refresh token support
 | **Red Room** | One thinker agent is assigned "attacker" — actively tries to break the implementation, find edge cases, security holes, performance problems. The other defends. Adversarial pressure before moving to the next batch. |
 | **Consensus** | Thinkers must reach explicit agreement before each batch goes to workers. If they can't agree after N rounds, escalate to user: "We disagree on X. Your call." |
 
-**Create:**
-- `/packages/core/src/collaboration.ts` — `CollaborationEngine` class:
-  - `run({ thread, store, registry, worktreeManager, settings, signal }): Promise<CollaborationResult>`:
-    1. **Discussion phase:** Send the user's prompt to all thinker adapters. Relay each response to all other thinkers. Repeat for `settings.maxDiscussionRounds` (default 5) or until convergence is detected (agents stop introducing new points).
-    2. **Plan breakdown into code-level TODOs:** Ask the thinkers to convert their agreed plan into **concrete, code-level TODO instructions** — not vague task descriptions. Each TODO must specify: which file to create or modify, what function/class/block to write, what it should do step-by-step, what existing patterns to follow, and what the expected inputs/outputs are. The thinkers have already decided everything — the worker's job is to type exactly what the thinkers described, making zero architectural decisions. Format: JSON array of batches, each batch containing max 5 TODO items: `{ batch: number, todos: [{ id, file, action: "create" | "modify", instructions: string, context: string }] }`. The `instructions` field is the full code-level specification. The `context` field references relevant existing code the worker should read before writing. Validate the response parses. If it doesn't, ask again with stricter formatting instructions (max 2 retries). **The worker is a typist, not a thinker. If a TODO is vague enough that the worker needs to make a design decision, the TODO is not ready — send it back to the thinkers.**
-    3. **Batch execution loop:** For each batch:
-       - Send the TODO list to the worker adapter(s) with full discussion context.
-       - Worker(s) execute in the thread's worktree, produce code changes.
-       - Worker reports completion.
-       - **Review sub-loop** (governed by the review mode setting):
-         - `auto`: Send the worker's diff to all thinker adapters. If any thinker flags issues, send fixes back to worker. Repeat up to `settings.maxReviewRounds` (default 3).
-         - `ask_me`: Prompt the user via the REPL to choose reviewers.
-         - `manual`: Append the worker's diff as a message, return control to the user.
-       - If all thinkers approve (or user approves in manual mode), proceed to next batch.
-    4. **Final review:** After all batches complete, send the full cumulative diff to all thinkers for a final pass. Apply any last fixes through the worker.
-    5. Return `CollaborationResult` with: `{ status, totalBatches, totalTodos, finalDiff, reviewLog }`.
-  - Convergence detection: reuse the keyword + repetition approach from Fixy's `discussion.service.ts` — if two consecutive thinker messages introduce no new TODOs or objections, declare convergence.
-- `/packages/core/src/collaboration-types.ts` — types:
-  - `CollaborationSettings`: `{ maxDiscussionRounds, maxReviewRounds, maxTodosPerBatch, reviewMode, collaborationMode, workerCount }`.
-  - `CollaborationBatch`: `{ batchNumber, todos: CollaborationTodo[] }`.
-  - `CollaborationTodo`: `{ id, file, action: "create" | "modify", instructions: string, context: string, status }`. The `instructions` field contains the full code-level specification — the worker reads it and writes exactly what is described. The `context` field tells the worker which existing files/functions to reference. If `instructions` is vague enough that the worker would need to make a design decision, the collaboration engine rejects the TODO and sends it back to the thinkers for refinement.
-  - `CollaborationResult`: `{ status, totalBatches, totalTodos, finalDiff, reviewLog }`.
-- `/packages/core/src/fixy-commands.ts` (update) — replace the Step 9 `/all` stub with a real call to `CollaborationEngine.run()`. Add `/all` to the reserved command table.
-- `/packages/cli/src/settings.ts` — local settings file at `~/.fixy/settings.json`:
-  - `reviewMode`: `"auto" | "ask_me" | "manual"` (default `"auto"`)
-  - `collaborationMode`: `"standard" | "critics" | "red_room" | "consensus"` (default `"standard"`)
-  - `maxDiscussionRounds`: number (default 5)
-  - `maxReviewRounds`: number (default 3)
-  - `maxTodosPerBatch`: number (default 5, max 5)
-  - `workerCount`: number (default 1, max 5)
-  - Changeable via `@fixy /settings <key> <value>` at runtime.
-- Tests: `collaboration.test.ts` — uses two stub thinker adapters and one stub worker adapter:
-  - Test 1: Standard mode — thinkers discuss (2 rounds), produce 2 batches of 3 TODOs each, worker executes each batch, thinkers approve, final review passes.
-  - Test 2: Thinker flags issue in review — worker gets fix instruction, re-executes, thinker approves on retry.
-  - Test 3: Consensus mode — thinkers disagree, escalate to user after max rounds.
-  - Test 4: Max 5 TODOs per batch enforced — a plan with 12 items splits into 3 batches (5, 5, 2).
+**Implementation (as built):**
+
+The collaboration engine is implemented inline in `/packages/core/src/fixy-commands.ts` as `FixyCommandRunner._handleAll()` (~200 lines). No separate `CollaborationEngine` class or types file was created — the logic is compact enough to live in the command runner. Settings are hardcoded constants for v0 (extractable to a settings file in v0.1).
+
+- `/packages/core/src/fixy-commands.ts` (update) — `_handleAll(prompt, ctx)`:
+  1. **Discussion phase:** All thinker adapters (registered adapters minus the worker) receive the prompt with a system framing. Up to 5 rounds. Early exit on agreement signals (`"agree"`, `"lgtm"`, `"looks good"`). Skipped in solo mode (single adapter).
+  2. **Plan breakdown:** Thinkers (or sole adapter in solo mode) produce a numbered TODO list. Responses merged, deduplicated by exact string match, capped at 20 items. Parsed via `_parseTodoList()` which handles `1.` and `1)` formats.
+  3. **Worker execution:** TODOs batched in groups of 5. Worker adapter executes each batch.
+  4. **Thinker review:** After each batch, thinkers review. If any reply contains `"ISSUES"`, worker retries (max 2 attempts per batch). If approved or max attempts reached, move to next batch.
+  5. **Final review:** All thinkers do a final pass over the full thread. Result appended as system message.
+  - All adapter calls use `callAdapter()` helper which constructs `FixyExecutionContext`, calls `adapter.execute()`, updates `agentSessions`, and appends the response as a thread message.
+  - Progress logged to terminal via `ctx.onLog('stdout', ...)` at each phase transition.
+- Hardcoded v0 constants (deferred to `/settings` in v0.1):
+  - `maxDiscussionRounds`: 5
+  - `maxReviewAttempts`: 2
+  - `maxTodosPerBatch`: 5
+  - `maxTotalTodos`: 20
+- Tests in `fixy-commands.test.ts` — 10 tests covering: solo mode, multi-adapter full loop, review issues with retry, TODO cap at 20, no-prompt error, no-adapter error.
 
 **Acceptance:**
 - `@fixy /all refactor auth middleware` on a thread with `@claude` and `@codex` registered triggers the full discussion → plan → batch → worker → review loop.
@@ -697,7 +678,7 @@ USER: @fixy /all Build OAuth refresh token support
 
 | Version | Scope | Notes |
 |---|---|---|
-| **v0** | 12-step terminal MVP above. `@claude` + `@codex` + `@fixy`, single thread CLI, worktree isolation, `/verdict` | This document. |
+| **v0** | 12-step terminal MVP above. `@claude` + `@codex` + `@fixy`, single thread CLI, worktree isolation, `/all` | This document. |
 | **v0.2** | Homebrew tap `fixy-ai/tap`, `brew install fixy` | Keep the npm path too. The Homebrew formula just shells out to the same Node binary. |
 | **v0.3** | Unified `sessionCodec` so each adapter can serialize/deserialize its session into a neutral, human-readable form, enabling thread export/import and verdict replay | Mirrors Paperclip's `sessionCodec` concept (`claudeSessionCodec`, `codexSessionCodec` in `server/src/adapters/registry.ts` lines 95, 110). |
 | **v0.4** | Third adapter. Either `@gemini` via Gemini CLI or `@opencode` via OpenCode, chosen by whichever reference codebase is cleanest to port from Paperclip's `packages/adapters/*-local/` | Same `FixyAdapter` shape, same `buildInheritedEnv` discipline. |
