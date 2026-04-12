@@ -22,7 +22,7 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | v0 adapters | `@claude` (Claude Code), `@codex` (Codex CLI) |
 | Auth model | **Inherited env only.** Spawn subprocesses with `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH`. No re-auth. No credential storage inside Fixy Code. |
 | Routing handles | `@claude`, `@codex`, `@fixy` (reserved) |
-| Worker model | User-selected via `@fixy /worker-model <adapter>`. Fixy Code never ships its own models. |
+| Worker model | User-selected via `@fixy /worker-model <adapter>`. Fixy Code never ships its own models. To change the model *within* a provider (e.g. switch from Opus to Sonnet inside Claude Code), the user configures it inside the provider's own CLI settings — Fixy Code only routes between adapters, never between models inside an adapter. |
 | Isolation | One **git worktree per `(thread, agent)`** pair |
 | Pricing | **Free** $0 · **Pro** $10/user/mo · **Team** $20/workspace (≤3 seats) |
 | Free tier | Day 1 full access → then 3 active threads, 1 project, 30-day history, terminal only |
@@ -44,7 +44,7 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | Auth | Zero. Inherited `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH` passed through to child processes. |
 | Routing | `@claude`, `@codex`, `@fixy` mention dispatch inside one shared thread |
 | Worker model | `@fixy` answers via whichever adapter the user has set as the worker model |
-| Commands | `/worker-model`, `/verdict`, `/reset`, `/status` |
+| Commands | `/all`, `/worker-model`, `/settings`, `/reset`, `/status` |
 | Isolation | `git worktree` per `(thread, agent)` under `.fixy/worktrees/<thread-id>/<agent>/` |
 | Persistence | Thread + message log JSON files under `~/.fixy/projects/<project-hash>/threads/<thread-id>.json` |
 | Streaming | Live stdout/stderr passthrough from adapter child processes to the terminal |
@@ -264,10 +264,11 @@ These four commands are the entire `@fixy` command surface in v0. Anything else 
 
 | Command | Signature | Behavior |
 |---|---|---|
+| `/all` | `@fixy /all <prompt>` | Trigger the **collaboration engine** (see Step 12). All registered thinker agents discuss the prompt together, agree on an implementation plan, break it into batches of max 5 TODOs, hand each batch to the worker(s), review the output, and iterate until the full plan is complete and approved. This is the core feature of Fixy Code. |
 | `/worker-model` | `@fixy /worker-model <adapterId>` | Set this thread's worker model to `<adapterId>`. Must resolve to a registered adapter. Persists in the thread's `workerModel` field. Takes effect immediately, including for the next bare-`@fixy` message. |
-| `/verdict` | `@fixy /verdict` | Run the verdict engine (see Step 12). Walks the last turn from each adapter that spoke in this thread, collects patches from each adapter's worktree via `git diff`, and prints a side-by-side summary ranked by a simple heuristic: (1) patches that apply cleanly to projectRoot, (2) smaller diff, (3) fewer warnings. **Never auto-applies.** |
-| `/reset` | `@fixy /reset` | Abort any in-flight adapter turn, clear all `agentSessions` in the thread (so the next invocation starts a fresh adapter session), and delete + recreate all `(thread, agent)` worktrees. Does **not** delete the thread or its message history. |
-| `/status` | `@fixy /status` | Print one line per registered adapter: `id`, `name`, `probe().available`, `probe().version`, `probe().authStatus`, plus the current `workerModel` and per-adapter `sessionId`s for this thread. |
+| `/settings` | `@fixy /settings [<key> <value>]` | View or update collaboration settings for this session. Without args, print current settings. With args, update one setting. Keys: `reviewMode` (`auto`/`ask_me`/`manual`), `collaborationMode` (`standard`/`critics`/`red_room`/`consensus`), `maxDiscussionRounds` (1–10), `maxReviewRounds` (1–5), `maxTodosPerBatch` (1–5), `workerCount` (1–5). Persists in `~/.fixy/settings.json`. |
+| `/reset` | `@fixy /reset` | Abort any in-flight adapter turn, clear all `agentSessions` in the thread (so the next invocation starts a fresh adapter session), and delete + recreate the thread worktree. Does **not** delete the thread or its message history. |
+| `/status` | `@fixy /status` | Print one line per registered adapter: `id`, `name`, `probe().available`, `probe().version`, `probe().authStatus`, plus the current `workerModel`, review mode, collaboration mode, and per-adapter `sessionId`s for this thread. |
 
 Everything else (`/help`, `/quit`, history browsing) lives on the CLI layer below `@fixy` — `/quit` and Ctrl-C exit the REPL; they are not `@fixy` commands.
 
@@ -566,29 +567,129 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 
 ---
 
-#### Step 12 — Verdict engine
+#### Step 12 — Collaboration engine (`@fixy /all`)
 
-**Goal:** `@fixy /verdict` produces a real, actionable side-by-side comparison of the last turn from each adapter that has spoken in the current thread, ranking them by a simple deterministic heuristic. This is the **wedge**: it's the one thing Fixy Code does that neither Claude Code nor Codex alone can do.
+**Goal:** `@fixy /all <prompt>` triggers the full collaborative coding loop — the **wedge** that makes Fixy Code fundamentally different from any single-agent tool. Multiple thinker agents discuss the task, agree on an implementation plan, break it into batches of max 5 TODOs, hand each batch to the worker(s), review the worker output, and iterate until the full plan is complete and approved. Fixy Code controls this entire mechanism — it is the conductor, not a participant.
+
+**Core flow:**
+
+```
+USER: @fixy /all Build OAuth refresh token support
+
+┌─ PHASE 1: DISCUSSION ─────────────────────────────────┐
+│  All thinker agents receive the prompt.                │
+│  They discuss back and forth (max N rounds,            │
+│  configurable, default 5).                             │
+│  Each agent sees what the other said.                  │
+│  They catch each other's blind spots.                  │
+│  Goal: agree on a full implementation plan.            │
+└────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─ PHASE 2: PLAN BREAKDOWN ─────────────────────────────┐
+│  Thinkers break the agreed plan into ordered batches.  │
+│  Each batch contains MAX 5 TODO items.                 │
+│  Each TODO is a concrete, scoped coding task.          │
+│  The batch is what gets sent to the worker(s).         │
+└────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─ PHASE 3: WORKER EXECUTION (per batch) ───────────────┐
+│  Batch N (up to 5 TODOs) sent to worker(s).            │
+│  Workers write the actual code.                        │
+│  User can configure 1–5 worker sub-agents in settings. │
+│  Workers operate in the thread's worktree.             │
+│  Workers report back: "batch complete, check it."      │
+└────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─ PHASE 4: THINKER REVIEW ─────────────────────────────┐
+│  ALL thinker agents review the worker's output.        │
+│  Did the worker implement correctly?                   │
+│  Any drift from what was agreed?                       │
+│  Missing edge cases? Security issues?                  │
+│  If issues found → worker fixes → thinkers re-review.  │
+│  If clean → next batch.                                │
+└────────────────────────────────────────────────────────┘
+           │
+           ▼
+  Repeat Phase 3–4 for each batch until plan complete.
+           │
+           ▼
+┌─ PHASE 5: FINAL REVIEW ──────────────────────────────┐
+│  All thinkers do a final pass over the full result.   │
+│  Worker applies any last fixes.                       │
+│  DONE ✅                                              │
+└───────────────────────────────────────────────────────┘
+```
+
+**Review modes** (user sets this in Fixy settings before or during a session):
+
+| Mode | Behavior |
+|---|---|
+| **Auto** | After each worker batch, ALL thinker agents automatically review. If issues found, worker fixes, thinkers re-review. Loop until approved or max review rounds hit. Default for v0. |
+| **Ask me** | After each worker batch, Fixy asks the user: "Which agent should review? @claude / @codex / both / skip?" User controls each review cycle. |
+| **Manual** | Worker writes code, shows diff to user. User decides what happens next by typing their own `@mentions`. Full manual control, no automatic review loop. |
+
+**Collaboration modes** (borrowed from Fixy's existing `discussion.service.ts` patterns, adapted for coding):
+
+| Mode | What it does |
+|---|---|
+| **Standard** | Phases 1–5 above. Agents discuss, agree, batch, worker executes, agents review. |
+| **Critics** | After Phase 4, add an extra round where each thinker agent MUST identify at least one potential issue — forces deeper review before approving a batch. |
+| **Red Room** | One thinker agent is assigned "attacker" — actively tries to break the implementation, find edge cases, security holes, performance problems. The other defends. Adversarial pressure before moving to the next batch. |
+| **Consensus** | Thinkers must reach explicit agreement before each batch goes to workers. If they can't agree after N rounds, escalate to user: "We disagree on X. Your call." |
 
 **Create:**
-- `/packages/core/src/verdict.ts` — `VerdictEngine` class:
-  - `run({ thread, store, worktreeManager }): Promise<VerdictResult>`:
-    1. For each `agentId` in `thread.worktrees`, find the most recent message in `thread.messages` where `agentId === <that id>`.
-    2. Call `worktreeManager.collectPatches(handle)` for each agent's worktree to get the current patch set.
-    3. For each patch set, run `git apply --check --3way <diff>` against a throwaway clone of `projectRoot` at `HEAD` to test whether it applies cleanly.
-    4. Score each candidate: `applies_cleanly` (bool, heaviest weight) → `total_line_delta` (ascending) → `warning_count` (ascending). Lower is better.
-    5. Render a plain-text side-by-side table: columns `agent | files | +/- | applies? | warnings`. Print the winner's summary in full, the runner-up's summary truncated to 10 lines.
-  - Returns a `VerdictResult` object; the command runner appends it as a system message.
-- `/packages/core/src/fixy-commands.ts` (update) — replace the Step 9 `/verdict` stub with a real call to `VerdictEngine.run()`.
-- Tests: `verdict.test.ts` — two stub adapters each produce a diff against a fixture repo, one applies cleanly and one conflicts, assert the clean one wins, assert the losing diff is still printed as the runner-up.
+- `/packages/core/src/collaboration.ts` — `CollaborationEngine` class:
+  - `run({ thread, store, registry, worktreeManager, settings, signal }): Promise<CollaborationResult>`:
+    1. **Discussion phase:** Send the user's prompt to all thinker adapters. Relay each response to all other thinkers. Repeat for `settings.maxDiscussionRounds` (default 5) or until convergence is detected (agents stop introducing new points).
+    2. **Plan breakdown:** Ask the lead thinker (first in the adapter list) to format the agreed plan as a JSON array of batches, each batch containing max 5 TODO items: `{ batch: number, todos: [{ id, description, files_likely_touched }] }`. Validate the response parses. If it doesn't, ask again with stricter formatting instructions (max 2 retries).
+    3. **Batch execution loop:** For each batch:
+       - Send the TODO list to the worker adapter(s) with full discussion context.
+       - Worker(s) execute in the thread's worktree, produce code changes.
+       - Worker reports completion.
+       - **Review sub-loop** (governed by the review mode setting):
+         - `auto`: Send the worker's diff to all thinker adapters. If any thinker flags issues, send fixes back to worker. Repeat up to `settings.maxReviewRounds` (default 3).
+         - `ask_me`: Prompt the user via the REPL to choose reviewers.
+         - `manual`: Append the worker's diff as a message, return control to the user.
+       - If all thinkers approve (or user approves in manual mode), proceed to next batch.
+    4. **Final review:** After all batches complete, send the full cumulative diff to all thinkers for a final pass. Apply any last fixes through the worker.
+    5. Return `CollaborationResult` with: `{ status, totalBatches, totalTodos, finalDiff, reviewLog }`.
+  - Convergence detection: reuse the keyword + repetition approach from Fixy's `discussion.service.ts` — if two consecutive thinker messages introduce no new TODOs or objections, declare convergence.
+- `/packages/core/src/collaboration-types.ts` — types:
+  - `CollaborationSettings`: `{ maxDiscussionRounds, maxReviewRounds, maxTodosPerBatch, reviewMode, collaborationMode, workerCount }`.
+  - `CollaborationBatch`: `{ batchNumber, todos: CollaborationTodo[] }`.
+  - `CollaborationTodo`: `{ id, description, filesLikelyTouched, status }`.
+  - `CollaborationResult`: `{ status, totalBatches, totalTodos, finalDiff, reviewLog }`.
+- `/packages/core/src/fixy-commands.ts` (update) — replace the Step 9 `/all` stub with a real call to `CollaborationEngine.run()`. Add `/all` to the reserved command table.
+- `/packages/cli/src/settings.ts` — local settings file at `~/.fixy/settings.json`:
+  - `reviewMode`: `"auto" | "ask_me" | "manual"` (default `"auto"`)
+  - `collaborationMode`: `"standard" | "critics" | "red_room" | "consensus"` (default `"standard"`)
+  - `maxDiscussionRounds`: number (default 5)
+  - `maxReviewRounds`: number (default 3)
+  - `maxTodosPerBatch`: number (default 5, max 5)
+  - `workerCount`: number (default 1, max 5)
+  - Changeable via `@fixy /settings <key> <value>` at runtime.
+- Tests: `collaboration.test.ts` — uses two stub thinker adapters and one stub worker adapter:
+  - Test 1: Standard mode — thinkers discuss (2 rounds), produce 2 batches of 3 TODOs each, worker executes each batch, thinkers approve, final review passes.
+  - Test 2: Thinker flags issue in review — worker gets fix instruction, re-executes, thinker approves on retry.
+  - Test 3: Consensus mode — thinkers disagree, escalate to user after max rounds.
+  - Test 4: Max 5 TODOs per batch enforced — a plan with 12 items splits into 3 batches (5, 5, 2).
 
 **Acceptance:**
-- `@fixy /verdict` on a thread where both `@claude` and `@codex` have each produced a patch prints a deterministic table and picks a winner.
-- **Never auto-applies.** The verdict is informational. The user then types `@claude` or `@codex` or applies the diff by hand from the worktree path printed in the table.
-- When only one agent has spoken, the verdict just reports that agent's patch with no comparison.
-- When no agent has spoken, the verdict prints `"no agent turns to compare"`.
+- `@fixy /all refactor auth middleware` on a thread with `@claude` and `@codex` registered triggers the full discussion → plan → batch → worker → review loop.
+- Thinkers never write code directly to the worktree — only the worker does.
+- Each batch contains at most 5 TODOs.
+- In `auto` review mode, thinkers automatically review each batch and the worker fixes issues without user intervention (up to max review rounds).
+- In `ask_me` mode, the REPL prompts the user after each batch.
+- In `manual` mode, the user regains full @mention control after each worker batch.
+- When only one thinker is registered, it still works — single-thinker plan + worker execution + single-thinker review.
+- The collaboration mode (standard/critics/red_room/consensus) affects the discussion and review phases as described above.
+- Worker sub-agent count is configurable from 1 to 5 in settings.
 
-**Paperclip refs:** none — Paperclip does not have a verdict concept; this is Fixy-original.
+**Paperclip refs:** none — Paperclip does not have collaborative multi-agent coding.
+**Fixy refs:** `backend/src/services/discussion.service.ts` — reuse the convergence detection and mode patterns (`debate`, `red_room`, `consensus`) adapted from text debate to code collaboration.
 
 ---
 
@@ -614,9 +715,11 @@ If a future reader of this plan is about to start implementation, these three de
 
 ### 1. The GitHub org and npm scope exist and are ours
 
-- Create `github.com/fixy-ai/fixy-code` as a **private repo** with an MIT `LICENSE` file at the root.
-- On npmjs.com, reserve the `@fixy` org. Publish a single stub `@fixy/cli@0.0.0` package with just a README pointing at the repo. If `@fixy` is taken, immediately fall back to `@fixy-ai` and update every package name in this plan in a single commit.
-- Verify that `pnpm add @fixy/cli` and `npm view @fixy/cli` both resolve to our stub.
+- Create `github.com/fixy-ai/fixy-code` as a **public repo** with an MIT `LICENSE` file at the root.
+- On npmjs.com, reserve the `@fixy` scope. Publish a scope-reservation package `@fixy/placeholder@0.0.1` so nobody else can claim the `@fixy/*` namespace. If `@fixy` is taken, immediately fall back to `@fixy-ai` and update every package name in this plan in a single commit.
+- Verify that `npm view @fixy/placeholder` resolves to our stub.
+
+**Status (2026-04-12):** ✅ DONE. Repo live at `github.com/fixy-ai/fixy-code` (public, MIT). `@fixy/placeholder@0.0.1` published on npm under user `fixy`. Scope `@fixy` permanently claimed.
 
 **Failure mode if skipped:** Step 10 cannot ship. You will discover this after writing 11 steps of code.
 
@@ -636,6 +739,11 @@ child.stdin.end("hello");
 Run it in a terminal where `claude login` was previously run. If Claude responds without prompting for login, the whole product thesis holds. Repeat with `codex exec` and `codex` in place of `claude`. If either CLI prompts for re-auth in this test, **stop**. The plan is wrong and Step 8 / Step 11 need to be redesigned around whatever auth flow the CLIs actually support.
 
 **Failure mode if skipped:** You will write two full adapters on top of a false assumption and discover the problem only when a real user runs `fixy` for the first time.
+
+**Status (2026-04-12):** ✅ DONE. Both probes passed on macOS (Apple Silicon):
+- `claude -p "Reply with exactly the word: OK"` → `OK`, exit 0, zero re-auth. Claude Code 2.1.101.
+- `codex exec --skip-git-repo-check "Reply with exactly: OK"` → `OK`, exit 0, zero re-auth. Codex CLI 0.112.0, model gpt-5.4.
+- Note: Codex requires either a trusted git directory or `--skip-git-repo-check`. Fixy Code always runs Codex inside a worktree, so this is a non-issue.
 
 ### 3. `git worktree add` works the way we think it does, on a fresh clone, on macOS
 
@@ -660,6 +768,8 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 
 **Failure mode if skipped:** Step 7 ships something that corrupts the user's repo the first time they hit `/reset`. The blast radius is the user's working tree — unacceptable.
 
+**Status (2026-04-12):** ✅ DONE. Tested on macOS: `git worktree add` (two worktrees), `git worktree list` (three entries), `git worktree remove` (clean removal, no orphans). All operations passed cleanly.
+
 ---
 
 ## 9. Session Log
@@ -671,3 +781,15 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - Author: Claude Opus 4.6 (1M context), acting on the user's brief.
 - Sources: `gpt-discussion.txt`, `claude-discussion.txt`, Paperclip reference codebase (`packages/adapters/claude-local/`, `packages/adapters/codex-local/`, `packages/adapter-utils/src/server-utils.ts`, `server/src/adapters/registry.ts`, `adapter-plugin.md`).
 - Status: All 12 steps drafted. Locked decisions mirrored from the user's brief. No code written yet. Awaiting the "first 30 minutes" verification pass before Step 1.
+
+### 2026-04-12 — Probes passed, repo created, plan corrected
+
+- All three "first 30 minutes" probes passed: Claude auth passthrough ✅, Codex auth passthrough ✅, git worktree ✅.
+- npm scope `@fixy` permanently claimed via `@fixy/placeholder@0.0.1` (npm user: `fixy`).
+- GitHub repo `fixy-ai/fixy-code` created (public, MIT), initial commit pushed with plan + README + .gitignore.
+- **Step 12 rewritten:** Replaced the verdict/competition engine with the **collaboration engine** (`@fixy /all`). Agents collaborate (discuss → agree → batch max 5 TODOs → worker executes → agents review → next batch). Added review modes (auto/ask_me/manual) and collaboration modes (standard/critics/red_room/consensus). This reflects the user's core vision: agents work TOGETHER toward one result, not compete for a winner.
+- Added `/all` and `/settings` to the reserved commands table.
+- Fixed §8: "private repo" → "public repo", "@fixy/cli@0.0.0" → "@fixy/placeholder@0.0.1".
+- Added probe results to §8 with dates and evidence.
+- Added worker-model clarification: Fixy routes between adapters, not between models within an adapter.
+- **v0 launch deliverable added:** Record a 2-minute demo video showing the full collaboration loop as the launch artifact.
