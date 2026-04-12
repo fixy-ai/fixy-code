@@ -86,8 +86,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
       // Re-read thread after turn to pick up new messages/sessions
       thread = await store.getThread(thread.id, thread.projectRoot);
 
-      // Print warnings from the latest agent message
+      // Print system messages (from @fixy commands like /status, /worker, /reset)
       const lastMsg = thread.messages[thread.messages.length - 1];
+      if (lastMsg && lastMsg.role === 'system') {
+        process.stdout.write(`\n${lastMsg.content}\n`);
+      }
+
+      // Print warnings from the latest agent message
       if (lastMsg && lastMsg.warnings.length > 0) {
         for (const w of lastMsg.warnings) {
           process.stderr.write(`warning: ${w}\n`);

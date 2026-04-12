@@ -60,7 +60,7 @@ class ClaudeAdapter implements FixyAdapter {
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
-    const args: string[] = ['--print', '--output-format', 'stream-json', '--verbose'];
+    const args: string[] = ['--print'];
 
     if (ctx.session) {
       args.push('--resume', ctx.session.sessionId);
