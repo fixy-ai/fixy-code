@@ -8,7 +8,7 @@
 ## Setup
 
 ```sh
-git clone https://github.com/user/fixy-code.git
+git clone https://github.com/fixy-ai/fixy-code.git
 cd fixy-code
 pnpm install
 ```
