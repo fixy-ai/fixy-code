@@ -16,13 +16,14 @@ import {
 
 import { parseCodexStreamJson } from './parse.js';
 
-// Codex CLI writes skill-loader errors to stderr on startup — suppress them.
+// Codex CLI writes skill-loader errors and stdin warnings to stderr on startup — suppress them.
 const CODEX_NOISE_RE = /^[0-9TZ:.+-]+ (ERROR|WARN) codex_/;
+const CODEX_STDIN_WARNING = 'warning: Reading additional input from stdin';
 
 function filterCodexNoise(stderr: string): string {
   return stderr
     .split('\n')
-    .filter((line) => !CODEX_NOISE_RE.test(line))
+    .filter((line) => !CODEX_NOISE_RE.test(line) && !line.includes(CODEX_STDIN_WARNING))
     .join('\n')
     .trim();
 }
@@ -68,6 +69,26 @@ class CodexAdapter implements FixyAdapter {
         detail,
       };
     }
+  }
+
+  async getActiveModel(): Promise<string | null> {
+    try {
+      const cmd = await resolveCommand('codex');
+      const result = await runChildProcess({
+        command: cmd,
+        args: ['--version'],
+        cwd: process.cwd(),
+        env: buildInheritedEnv(),
+        timeoutMs: 5_000,
+      });
+      const output = (result.stdout + result.stderr).trim();
+      // Match patterns like "gpt-4o", "gpt-4.5", "gpt-5.4 xhigh", "gpt-4o-mini"
+      const match = /gpt-[0-9]+(?:\.[0-9]+)?(?:[a-z0-9-]*)(?:\s+[a-z]+)?/.exec(output);
+      if (match) return match[0].trim();
+    } catch {
+      // Ignore
+    }
+    return null;
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {

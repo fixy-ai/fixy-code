@@ -74,6 +74,8 @@ export interface FixyAdapter {
   probe(): Promise<FixyProbeResult>;
   /** Run one turn. Must honor `ctx.signal`. */
   execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult>;
+  /** Return the currently active model identifier (e.g. "claude-sonnet-4-5"), or null. */
+  getActiveModel?(): Promise<string | null>;
 }
 
 export interface FixyProbeResult {

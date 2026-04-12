@@ -4,7 +4,7 @@ import path from 'node:path';
 const RESET = '\x1b[0m';
 const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
-const FIXY_COLOR = '\x1b[33m';
+const FIXY_COLOR = '\x1b[38;5;105m';
 
 const COLORS: Record<string, string> = {
   claude: '\x1b[34m',
@@ -28,6 +28,7 @@ export const PROMPT = `${FIXY_COLOR}❯${RESET}  `;
 export function startupPanel(
   version: string,
   adapters: string[],
+  models: Record<string, string | null>,
   projectRoot: string,
   threadId: string,
 ): string {
@@ -38,9 +39,16 @@ export function startupPanel(
   const rel = path.relative(homeDir, projectRoot);
   const dirDisplay = rel.startsWith('..') ? projectRoot : `~/${rel}`;
 
+  const agentDisplay = adapters
+    .map((a) => {
+      const model = models[a];
+      return model ? `@${a} (${model})` : `@${a}`;
+    })
+    .join(' · ');
+
   const contentLines: string[] = [
     `${BOLD}${FIXY_COLOR}Fixy v${version}${RESET}`,
-    `${DIM}agents: ${adapters.map((a) => `@${a}`).join(' · ')}${RESET}`,
+    `${DIM}agents: ${agentDisplay}${RESET}`,
     `${DIM}directory: ${dirDisplay}${RESET}`,
     `${DIM}thread: ${threadId}${RESET}`,
   ];

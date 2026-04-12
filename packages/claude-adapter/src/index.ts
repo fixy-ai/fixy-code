@@ -1,5 +1,8 @@
 // packages/claude-adapter/src/index.ts
 
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type {
   FixyAdapter,
   FixyProbeResult,
@@ -57,6 +60,41 @@ class ClaudeAdapter implements FixyAdapter {
         detail,
       };
     }
+  }
+
+  async getActiveModel(): Promise<string | null> {
+    // 1. Try reading the model from ~/.claude/settings.json
+    try {
+      const configDir =
+        process.env['CLAUDE_CONFIG_DIR'] ?? path.join(os.homedir(), '.claude');
+      const settingsPath = path.join(configDir, 'settings.json');
+      const raw = await fs.readFile(settingsPath, 'utf8');
+      const settings = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof settings['model'] === 'string' && settings['model'].length > 0) {
+        return settings['model'];
+      }
+    } catch {
+      // Config not found or not parseable — fall through
+    }
+
+    // 2. Fallback: run claude --version and grep for a model name pattern
+    try {
+      const resolvedCommand = await resolveCommand('claude');
+      const result = await runChildProcess({
+        command: resolvedCommand,
+        args: ['--version'],
+        cwd: process.cwd(),
+        env: buildInheritedEnv(),
+        timeoutMs: 5_000,
+      });
+      const output = result.stdout + result.stderr;
+      const match = /claude-[a-z0-9]+-[0-9]+(?:\.[0-9]+)?(?:-[0-9]+)?/.exec(output);
+      if (match) return match[0] ?? null;
+    } catch {
+      // Ignore
+    }
+
+    return null;
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {

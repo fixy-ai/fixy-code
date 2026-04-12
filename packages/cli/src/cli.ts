@@ -57,6 +57,17 @@ async function main(): Promise<void> {
   registry.register(createClaudeAdapter());
   registry.register(createCodexAdapter());
 
+  // Collect active model names from each adapter (best-effort, null if unavailable).
+  const adapterList = registry.list();
+  const modelEntries = await Promise.all(
+    adapterList.map(async (a) => {
+      const model =
+        typeof a.getActiveModel === 'function' ? await a.getActiveModel() : null;
+      return [a.id, model] as [string, string | null];
+    }),
+  );
+  const models: Record<string, string | null> = Object.fromEntries(modelEntries);
+
   const thread = threadId
     ? await store.getThread(threadId, projectRoot)
     : await store.createThread(projectRoot);
@@ -67,12 +78,13 @@ async function main(): Promise<void> {
     startupPanel(
       version,
       registry.list().map((a) => a.id),
+      models,
       projectRoot,
       thread.id,
     ) + '\n',
   );
 
-  await startRepl({ thread, store, registry, worktreeManager, turnController, version, projectRoot });
+  await startRepl({ thread, store, registry, worktreeManager, turnController, version, projectRoot, models });
 }
 
 main().catch((err) => {
