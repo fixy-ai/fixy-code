@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
+import { createCodexAdapter } from '@fixy/codex-adapter';
 import { banner } from './format.js';
 import { startRepl } from './repl.js';
 
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   const turnController = new TurnController();
 
   registry.register(createClaudeAdapter());
+  registry.register(createCodexAdapter());
 
   const thread = threadId
     ? await store.getThread(threadId, projectRoot)

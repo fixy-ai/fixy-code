@@ -782,6 +782,30 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - Sources: `gpt-discussion.txt`, `claude-discussion.txt`, Paperclip reference codebase (`packages/adapters/claude-local/`, `packages/adapters/codex-local/`, `packages/adapter-utils/src/server-utils.ts`, `server/src/adapters/registry.ts`, `adapter-plugin.md`).
 - Status: All 12 steps drafted. Locked decisions mirrored from the user's brief. No code written yet. Awaiting the "first 30 minutes" verification pass before Step 1.
 
+### 2026-04-12 (session 2) — Steps 1–10 implemented, tested, published
+
+- All packages built and published to npm under `@fixy` scope at version `0.0.2`.
+- `npm install -g @fixy/code` installs the `fixy` binary end-to-end.
+- Steps 1–10 verified working: core types, thread store, adapter registry, router, turn controller, worktree manager, diff parser, fixy-commands, adapter-utils, claude-adapter, CLI REPL.
+- Two display bugs found and fixed during live testing:
+  - Claude CLI was outputting raw JSON in piped mode — fixed by adding `--output-format text` to claude-adapter args.
+  - `@fixy /status` was silent — fixed by printing system messages in `repl.ts` after each turn.
+- Final live test confirmed: `@fixy /status` lists Claude adapter, `@claude say hello` responds without re-auth.
+- 126 tests pass across 20 test files.
+
+### 2026-04-12 (session 3) — Step 11: codex-adapter
+
+- Implemented `@fixy/codex-adapter` (`packages/codex-adapter/src/index.ts` + `parse.ts`).
+- `probe()` runs `codex --version` → returns version string.
+- `execute()` uses `codex exec --json --skip-git-repo-check --full-auto <prompt>` for new sessions; `codex exec resume <sessionId> ...` for subsequent turns.
+- JSONL stdout intercepted chunk-by-chunk: only `item.completed` / `agent_message` text forwarded to terminal — no raw JSON shown to user.
+- Startup noise from codex skills-loader (`ERROR codex_core::skills::loader`) filtered from stderr.
+- Registered alongside claude-adapter in `packages/cli/src/cli.ts`.
+- `@fixy /status` now lists two adapters (Claude Code + Codex CLI).
+- Live test confirmed: `@codex say hello in one sentence` → `Hello.` with zero re-auth.
+- All 126 tests still pass. Build clean across all 5 packages.
+- Next: Step 12 — collaboration engine (`@fixy /all`).
+
 ### 2026-04-12 — Probes passed, repo created, plan corrected
 
 - All three "first 30 minutes" probes passed: Claude auth passthrough ✅, Codex auth passthrough ✅, git worktree ✅.

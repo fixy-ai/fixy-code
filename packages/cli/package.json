@@ -1,6 +1,6 @@
 {
   "name": "@fixy/code",
-  "version": "0.0.0",
+  "version": "0.0.2",
   "type": "module",
   "bin": {
     "fixy": "./dist/cli.js"
@@ -14,7 +14,8 @@
   "dependencies": {
     "@fixy/core": "workspace:*",
     "@fixy/adapter-utils": "workspace:*",
-    "@fixy/claude-adapter": "workspace:*"
+    "@fixy/claude-adapter": "workspace:*",
+    "@fixy/codex-adapter": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

@@ -60,6 +60,9 @@ importers:
       '@fixy/claude-adapter':
         specifier: workspace:*
         version: link:../claude-adapter
+      '@fixy/codex-adapter':
+        specifier: workspace:*
+        version: link:../codex-adapter
       '@fixy/core':
         specifier: workspace:*
         version: link:../core
@@ -73,6 +76,13 @@ importers:
       '@fixy/adapter-utils':
         specifier: workspace:*
         version: link:../adapter-utils
+      '@fixy/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
 
   packages/core:
     devDependencies:

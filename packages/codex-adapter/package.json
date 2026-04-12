@@ -1,6 +1,6 @@
 {
   "name": "@fixy/codex-adapter",
-  "version": "0.0.0",
+  "version": "0.0.2",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,7 +15,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fixy/adapter-utils": "workspace:*"
+    "@fixy/adapter-utils": "workspace:*",
+    "@fixy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
   },
   "license": "MIT"
 }
