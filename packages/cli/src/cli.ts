@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
 import { createCodexAdapter } from '@fixy/codex-adapter';
-import { banner } from './format.js';
+import { startupPanel } from './format.js';
 import { startRepl } from './repl.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(
+  readFileSync(path.join(__dirname, '../package.json'), 'utf8'),
+) as { version: string };
+const version = pkg.version;
 
 async function findGitRoot(dir: string): Promise<string | null> {
   let current = dir;
@@ -31,7 +39,6 @@ async function main(): Promise<void> {
   }
   const projectRoot: string = gitRoot;
 
-  // Parse args: --thread <id>
   let threadId: string | undefined;
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
@@ -54,15 +61,18 @@ async function main(): Promise<void> {
     ? await store.getThread(threadId, projectRoot)
     : await store.createThread(projectRoot);
 
-  console.log(
-    banner(
-      '0.0.0',
-      registry.list().map((a) => a.id),
-    ),
-  );
-  console.log(`thread: ${thread.id}`);
+  if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');
 
-  await startRepl({ thread, store, registry, worktreeManager, turnController });
+  process.stdout.write(
+    startupPanel(
+      version,
+      registry.list().map((a) => a.id),
+      projectRoot,
+      thread.id,
+    ) + '\n',
+  );
+
+  await startRepl({ thread, store, registry, worktreeManager, turnController, version, projectRoot });
 }
 
 main().catch((err) => {

@@ -6,6 +6,7 @@ import type {
   TurnController,
   WorktreeManager,
 } from '@fixy/core';
+import { PROMPT, createSpinner } from './format.js';
 
 export interface ReplParams {
   thread: FixyThread;
@@ -13,6 +14,8 @@ export interface ReplParams {
   registry: AdapterRegistry;
   worktreeManager: WorktreeManager;
   turnController: TurnController;
+  version: string;
+  projectRoot: string;
 }
 
 export async function startRepl(params: ReplParams): Promise<void> {
@@ -28,31 +31,29 @@ export async function startRepl(params: ReplParams): Promise<void> {
     terminal: process.stdin.isTTY ?? false,
   });
 
-  // Ctrl-C: first press aborts active turn, second press (or idle) exits
   process.on('SIGINT', () => {
     if (turnActive && turnAbort) {
       turnAbort.abort();
       turnAbort = null;
       turnActive = false;
-      process.stdout.write('\n(turn cancelled)\n');
+      process.stdout.write('\x1b[33m(turn cancelled)\x1b[0m\n');
     } else {
-      console.log('\nbye');
+      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       process.exit(0);
     }
   });
 
   const ask = (): Promise<string | null> =>
     new Promise((resolve) => {
-      rl.question('fixy> ', (answer) => resolve(answer));
+      rl.question(PROMPT, (answer) => resolve(answer));
       rl.once('close', () => resolve(null));
     });
 
   while (true) {
     const line = await ask();
 
-    // Ctrl-D or stream closed
     if (line === null) {
-      console.log('bye');
+      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       break;
     }
 
@@ -60,16 +61,19 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (input.length === 0) continue;
 
     if (input === '/quit' || input === '/exit') {
-      console.log('bye');
+      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       break;
     }
 
     turnAbort = new AbortController();
     turnActive = true;
 
+    const spinner = createSpinner();
+
     try {
-      // Re-read thread from disk to get latest state
       thread = await store.getThread(thread.id, thread.projectRoot);
+
+      spinner.start('thinking...');
 
       await turnController.runTurn({
         thread,
@@ -83,16 +87,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
         worktreeManager,
       });
 
-      // Re-read thread after turn to pick up new messages/sessions
       thread = await store.getThread(thread.id, thread.projectRoot);
 
-      // Print system messages (from @fixy commands like /status, /worker, /reset)
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {
         process.stdout.write(`\n${lastMsg.content}\n`);
       }
 
-      // Print warnings from the latest agent message
       if (lastMsg && lastMsg.warnings.length > 0) {
         for (const w of lastMsg.warnings) {
           process.stderr.write(`warning: ${w}\n`);
@@ -100,12 +101,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
       }
     } catch (err) {
       if (turnAbort.signal.aborted) {
-        // Turn was cancelled by Ctrl-C, already handled
+        // cancelled by Ctrl-C, already handled
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`error: ${msg}\n`);
+        process.stderr.write(`\x1b[31merror:\x1b[0m ${msg}\n`);
       }
     } finally {
+      spinner.stop();
       turnActive = false;
       turnAbort = null;
     }
