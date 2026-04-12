@@ -31,3 +31,7 @@ export type { ParsedInput } from './router.js';
 
 export { TurnController } from './turn.js';
 export type { TurnParams } from './turn.js';
+
+export { WorktreeManager } from './worktree.js';
+export type { WorktreeHandle } from './worktree.js';
+export { parseUnifiedDiff } from './diff-parser.js';
