@@ -871,7 +871,7 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 
 ### Step 18 — TUI Polish: Color, Model Display, / and @ Autocomplete
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE (2026-04-12, session 6)
 
 **Goal:** Fix three UX issues discovered during live testing:
 1. **Color:** Change brand color from amber/yellow (`\x1b[33m`) to **light indigo** (`\x1b[38;5;105m` or closest 256-color match). Apply consistently to: startup panel borders, prompt `❯`, spinner, section headers.
@@ -913,6 +913,34 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 - Brand color is light indigo everywhere (no yellow/amber remaining)
 - Typing `/` at the prompt shows command menu; typing `@` shows agent menu
 - `warning: Reading additional input from stdin` no longer appears in Codex output
+- All existing tests still pass
+
+---
+
+### Step 18b — ESC Cancel & Agent Name Prefix
+
+**Status:** 🔲 PENDING
+
+**Goal:** Two UX improvements discovered during live testing of Step 18.
+
+**1. ESC to stop/cancel**
+- If an agent turn is in progress (spinner running): `ESC` aborts the turn via `AbortController`, stops the spinner, prints `⊘ cancelled` in indigo, returns prompt.
+- If user is mid-typing (no turn running): `ESC` clears the current input line and returns a blank prompt — same as Ctrl-C on the line but without exiting.
+- `ESC` must never exit the REPL. Only Ctrl-C twice or `/quit` exits.
+
+**2. Agent name prefix on real-time output**
+- When the first stdout chunk arrives from an agent, print a colored header on its own line: `@claude` or `@codex` in indigo, then a newline.
+- Subsequent streaming chunks print inline below it.
+- After the turn ends, print a blank line to separate from the next prompt.
+- User always sees which agent is speaking before reading its output — even mid-stream.
+
+**Files to modify:**
+- `packages/cli/src/repl.ts` — ESC keypress handler + agent name prefix on first chunk
+
+**Acceptance:**
+- Pressing ESC during a running turn cancels it cleanly with `⊘ cancelled`
+- Pressing ESC while typing clears the line, no exit
+- Every agent response is prefixed with `@claude` / `@codex` in indigo before its text
 - All existing tests still pass
 
 ---
