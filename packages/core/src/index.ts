@@ -23,3 +23,5 @@ export {
 } from './paths.js';
 
 export { LocalThreadStore } from './store.js';
+
+export { AdapterRegistry } from './registry.js';
