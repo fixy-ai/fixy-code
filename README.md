@@ -21,3 +21,29 @@ One conversation. Multiple agents. Your existing subscriptions.
 ## License
 
 MIT
+
+## Development
+
+### Prerequisites
+
+- Node.js 20+ (see `.nvmrc`)
+- pnpm 9+
+
+### Setup
+
+```bash
+pnpm install
+pnpm -r build
+pnpm -r typecheck
+```
+
+### Project structure
+
+```
+packages/
+  core/             — shared types, interfaces, and utilities
+  adapter-utils/    — helpers for spawning and managing adapter subprocesses
+  cli/              — terminal REPL entry point (@fixy/cli)
+  claude-adapter/   — Claude Code adapter (@fixy/claude-adapter)
+  codex-adapter/    — Codex CLI adapter (@fixy/codex-adapter)
+```

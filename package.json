@@ -1,0 +1,21 @@
+{
+  "name": "@fixy/root",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@10.31.0",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "lint": "echo \"lint not configured yet\"",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "echo \"test not configured yet\""
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}
