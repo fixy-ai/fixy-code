@@ -206,6 +206,10 @@ describe('slugify — emojis', () => {
 });
 
 describe('slugify — edge cases', () => {
+  it('returns empty string for an empty input ""', () => {
+    expect(slugify('')).toBe('');
+  });
+
   it('returns empty string for whitespace-only input', () => {
     expect(slugify('   ')).toBe('');
   });
