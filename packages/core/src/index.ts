@@ -25,3 +25,9 @@ export {
 export { LocalThreadStore } from './store.js';
 
 export { AdapterRegistry } from './registry.js';
+
+export { Router } from './router.js';
+export type { ParsedInput } from './router.js';
+
+export { TurnController } from './turn.js';
+export type { TurnParams } from './turn.js';
