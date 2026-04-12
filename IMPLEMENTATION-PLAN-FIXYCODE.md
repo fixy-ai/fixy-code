@@ -715,6 +715,106 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ---
 
+### Step 14 — Global Settings (`@fixy /settings`)
+
+**Status:** 🔲 PENDING
+
+**Goal:** Give users a persistent global config file so they can set default worker, collaboration mode, review mode, and all hardcoded constants — without passing flags every session.
+
+**Why:** Both the Claude and GPT-5.4 design discussions identified that Fixy must never hardcode model names or behaviour. All v0 constants (`maxDiscussionRounds`, `maxTodosPerBatch`, etc.) are currently hardcoded in `fixy-commands.ts`. This step extracts them into a user-editable settings file and wires up the `/settings` command that is already reserved but not implemented.
+
+**Settings file:** `~/.fixy/settings.json`
+
+```json
+{
+  "defaultWorker": "claude",
+  "collaborationMode": "standard",
+  "reviewMode": "auto",
+  "maxDiscussionRounds": 5,
+  "maxReviewAttempts": 2,
+  "maxTodosPerBatch": 5,
+  "maxTotalTodos": 20
+}
+```
+
+**Commands:**
+- `@fixy /settings` — pretty-print all current settings
+- `@fixy /settings set <key> <value>` — update a single setting, persist to disk
+- `@fixy /settings reset` — restore defaults
+
+**Files to create/modify:**
+- `packages/core/src/settings.ts` (new) — `FixySettings` type, `loadSettings()`, `saveSettings()`, `defaultSettings`
+- `packages/core/src/paths.ts` (update) — add `getSettingsFile()` → `~/.fixy/settings.json`
+- `packages/core/src/index.ts` (update) — export settings module
+- `packages/core/src/fixy-commands.ts` (update) — replace all hardcoded constants with values from `loadSettings()`; implement `/settings` command handler
+- `packages/core/src/store.ts` (update) — call `init()` to create settings file with defaults if missing
+
+**Acceptance:**
+- `@fixy /settings` prints current config in a readable format
+- `@fixy /settings set defaultWorker codex` persists to `~/.fixy/settings.json` and takes effect immediately
+- All collaboration engine constants (`maxDiscussionRounds` etc.) are read from settings, not hardcoded
+- Defaults match current hardcoded values so existing behaviour is unchanged
+
+---
+
+### Step 15 — Context Summarization
+
+**Status:** 🔲 PENDING
+
+**Goal:** When a thread grows long enough to risk hitting adapter token limits, automatically summarize older turns and replace them with a compact digest — without losing any information on disk.
+
+**Why:** Both the Claude and GPT-5.4 design discussions flagged context drift as the #1 hard problem. "At some point you hit token limits and the agents start losing track of earlier decisions." This step is what separates a tool that works for 10 exchanges from one that works for 100.
+
+**Design:**
+- Configurable token budget per turn (default: 40,000 tokens, rough heuristic by character count)
+- When thread messages exceed the budget, an out-of-band summarization call is made to the current worker adapter: "Summarize the following conversation history in under 500 words, preserving all decisions, file changes, and open questions."
+- The summary replaces the oldest N messages in the `FixyExecutionContext` prompt that gets sent to adapters — the full `thread.messages` array on disk is NEVER mutated
+- Summary stored as a `role: 'system'` message with `summarized: true` flag in the in-memory context only
+
+**Files to create/modify:**
+- `packages/core/src/summarizer.ts` (new) — `summarizeThread(messages, worker, ctx)` → trimmed message array
+- `packages/core/src/turn.ts` (update) — call summarizer before building adapter prompt when message count exceeds threshold
+- `packages/core/src/thread.ts` (update) — add optional `summarized: boolean` flag to `FixyMessage`
+- `packages/core/src/settings.ts` (update) — add `contextBudgetChars: number` setting (default: 160_000)
+
+**Acceptance:**
+- Threads with 50+ long messages still produce coherent agent responses
+- `~/.fixy/projects/.../threads/<id>.json` always contains the full unmodified history
+- Summarization is transparent — user sees a dim `[context summarized]` notice in the REPL, not a hard error
+
+---
+
+### Step 16 — Third Adapter (`@gemini` or `@opencode`)
+
+**Status:** 🔲 PENDING
+
+**Goal:** Add a third coding agent adapter. Candidate: Gemini CLI (`gemini` binary, Google's official CLI) or OpenCode (`opencode` binary, open-source, multi-provider). Decision: whichever binary has a cleaner non-interactive execution path verified by hand before implementation starts (same auth passthrough test from §8).
+
+**Why:** Both discussions agreed the moat is cross-model disagreement. Two agents from two companies expose each other's blind spots. A third from a third vendor (Google) deepens this structurally. Also validates that the `FixyAdapter` interface generalises cleanly.
+
+**Files to create:**
+- `packages/gemini-adapter/` (or `opencode-adapter/`) — mirrors `codex-adapter/` structure exactly:
+  - `src/index.ts` — `GeminiAdapter implements FixyAdapter`
+  - `src/parse.ts` — output parser for the chosen CLI's stdout format
+  - `src/__tests__/adapter.test.ts` — probe + execute + session resume + noise filter tests
+  - `src/__tests__/parse.test.ts` — parser unit tests
+  - `package.json`, `tsconfig.json`
+- `packages/cli/src/cli.ts` (update) — register third adapter alongside claude and codex
+
+**Pre-work (must be done before coding):**
+1. Verify `gemini --version` and `gemini -p "say OK"` work non-interactively with inherited auth
+2. Verify stdout format and session/resume mechanism
+3. If Gemini CLI fails the test, run the same test with `opencode`
+4. Pick the one that passes and document the result in §8
+
+**Acceptance:**
+- `@fixy /status` lists three adapters
+- `@gemini say hello` responds without re-auth
+- Session resume works across turns
+- All existing tests still pass
+
+---
+
 ## 7. Post-v0 Roadmap
 
 | Version | Scope | Notes |
