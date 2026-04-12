@@ -674,6 +674,47 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ---
 
+### Step 13 — Polished Terminal UI (TUI)
+
+**Status:** ✅ DONE (2026-04-12, session 5)
+
+**Goal:** Replace the plain `fixy>` readline prompt with a polished terminal UI matching the visual quality of Claude Code and Codex — using only raw ANSI escape codes and box-drawing characters. No new dependencies.
+
+**Files changed:**
+- `packages/cli/src/format.ts` — full rewrite
+- `packages/cli/src/repl.ts` — styled prompt + spinner
+- `packages/cli/src/cli.ts` — startup panel + screen clear
+
+**What was built:**
+
+1. **Startup panel** (`startupPanel()` in `format.ts`):
+   - Box drawn with `╭ ─ ╮ │ ╰ ╯` in amber/yellow (`\x1b[33m`), auto-sized to terminal width (max 80)
+   - Displays: `Fixy v{version}` (bold), agents (`@claude · @codex`), directory (`~/relative/path`), thread ID
+   - Version read from `package.json` at runtime — never hardcoded
+   - Screen cleared on startup (TTY-only via `process.stdout.isTTY`)
+
+2. **Styled prompt** (`PROMPT` constant in `format.ts`):
+   - Replaced `fixy> ` with `\x1b[33m❯\x1b[0m  ` (amber arrow)
+
+3. **Spinner** (`createSpinner()` in `format.ts`):
+   - Braille frames `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` cycling at 100ms during agent turns
+   - Shows `thinking...` label while waiting for adapter response
+   - TTY-only — no-op when stdin/stdout is piped
+   - Cleared with `\r\x1b[2K` before next prompt
+
+4. **Styled status messages** (`repl.ts`):
+   - Ctrl-C cancel: amber `(turn cancelled)`
+   - Errors: red `error:` prefix
+   - Exit: dim `goodbye`
+
+**Acceptance:**
+- `fixy` clears the screen and shows the styled header panel on startup
+- Input prompt is `❯` (amber) instead of `fixy>`
+- A spinner animates during agent turns
+- All 306 tests pass, typecheck and build clean
+
+---
+
 ## 7. Post-v0 Roadmap
 
 | Version | Scope | Notes |
@@ -812,3 +853,14 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - Added probe results to §8 with dates and evidence.
 - Added worker clarification: Fixy routes between adapters, not between models within an adapter.
 - **v0 launch deliverable added:** Record a 2-minute demo video showing the full collaboration loop as the launch artifact.
+
+### 2026-04-12 (session 5) — Step 13: polished TUI
+
+- Replaced plain `fixy>` readline prompt with a styled terminal UI using raw ANSI escape codes only (no new dependencies).
+- Startup clears the screen and shows a box-drawing panel: `Fixy v{version}`, agents, directory, thread ID — all in amber/yellow brand color.
+- Input prompt changed from `fixy>` to amber `❯`.
+- Braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) animates at 100ms during agent turns, cleared after each response.
+- Styled status messages: amber for cancellation, red for errors, dim for exit.
+- All TTY features are no-op when stdin/stdout is piped (safe for scripting).
+- 306 tests pass. Typecheck and build clean across all 5 packages.
+- slugify utility also added to `@fixy/core` (pure function, no dependencies) and exported from the package index — tested with 44 unit tests covering ASCII, diacritics, emoji, edge cases, and output invariants.
