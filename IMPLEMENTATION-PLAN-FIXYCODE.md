@@ -644,7 +644,7 @@ USER: @fixy /all Build OAuth refresh token support
 - `/packages/core/src/collaboration.ts` — `CollaborationEngine` class:
   - `run({ thread, store, registry, worktreeManager, settings, signal }): Promise<CollaborationResult>`:
     1. **Discussion phase:** Send the user's prompt to all thinker adapters. Relay each response to all other thinkers. Repeat for `settings.maxDiscussionRounds` (default 5) or until convergence is detected (agents stop introducing new points).
-    2. **Plan breakdown:** Ask the lead thinker (first in the adapter list) to format the agreed plan as a JSON array of batches, each batch containing max 5 TODO items: `{ batch: number, todos: [{ id, description, files_likely_touched }] }`. Validate the response parses. If it doesn't, ask again with stricter formatting instructions (max 2 retries).
+    2. **Plan breakdown into code-level TODOs:** Ask the thinkers to convert their agreed plan into **concrete, code-level TODO instructions** — not vague task descriptions. Each TODO must specify: which file to create or modify, what function/class/block to write, what it should do step-by-step, what existing patterns to follow, and what the expected inputs/outputs are. The thinkers have already decided everything — the worker's job is to type exactly what the thinkers described, making zero architectural decisions. Format: JSON array of batches, each batch containing max 5 TODO items: `{ batch: number, todos: [{ id, file, action: "create" | "modify", instructions: string, context: string }] }`. The `instructions` field is the full code-level specification. The `context` field references relevant existing code the worker should read before writing. Validate the response parses. If it doesn't, ask again with stricter formatting instructions (max 2 retries). **The worker is a typist, not a thinker. If a TODO is vague enough that the worker needs to make a design decision, the TODO is not ready — send it back to the thinkers.**
     3. **Batch execution loop:** For each batch:
        - Send the TODO list to the worker adapter(s) with full discussion context.
        - Worker(s) execute in the thread's worktree, produce code changes.
@@ -660,7 +660,7 @@ USER: @fixy /all Build OAuth refresh token support
 - `/packages/core/src/collaboration-types.ts` — types:
   - `CollaborationSettings`: `{ maxDiscussionRounds, maxReviewRounds, maxTodosPerBatch, reviewMode, collaborationMode, workerCount }`.
   - `CollaborationBatch`: `{ batchNumber, todos: CollaborationTodo[] }`.
-  - `CollaborationTodo`: `{ id, description, filesLikelyTouched, status }`.
+  - `CollaborationTodo`: `{ id, file, action: "create" | "modify", instructions: string, context: string, status }`. The `instructions` field contains the full code-level specification — the worker reads it and writes exactly what is described. The `context` field tells the worker which existing files/functions to reference. If `instructions` is vague enough that the worker would need to make a design decision, the collaboration engine rejects the TODO and sends it back to the thinkers for refinement.
   - `CollaborationResult`: `{ status, totalBatches, totalTodos, finalDiff, reviewLog }`.
 - `/packages/core/src/fixy-commands.ts` (update) — replace the Step 9 `/all` stub with a real call to `CollaborationEngine.run()`. Add `/all` to the reserved command table.
 - `/packages/cli/src/settings.ts` — local settings file at `~/.fixy/settings.json`:
