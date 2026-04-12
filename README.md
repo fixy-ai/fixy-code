@@ -43,7 +43,7 @@ pnpm -r typecheck
 packages/
   core/             — shared types, interfaces, and utilities
   adapter-utils/    — helpers for spawning and managing adapter subprocesses
-  cli/              — terminal REPL entry point (@fixy/cli)
+  cli/              — terminal REPL entry point (@fixy/code)
   claude-adapter/   — Claude Code adapter (@fixy/claude-adapter)
   codex-adapter/    — Codex CLI adapter (@fixy/codex-adapter)
 ```

@@ -66,7 +66,7 @@ fixy-code/
 └── packages/
     ├── core/                        # Thread, router, worktree, collaboration engine
     ├── adapter-utils/               # Subprocess spawning, env building, log helpers
-    ├── cli/                         # Terminal REPL entry point (@fixy/cli)
+    ├── cli/                         # Terminal REPL entry point (@fixy/code)
     ├── claude-adapter/              # Claude Code CLI adapter
     └── codex-adapter/               # Codex CLI adapter
 ```

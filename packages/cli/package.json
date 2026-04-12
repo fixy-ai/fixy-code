@@ -1,5 +1,5 @@
 {
-  "name": "@fixy/cli",
+  "name": "@fixy/code",
   "version": "0.0.0",
   "type": "module",
   "bin": {

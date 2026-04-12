@@ -1,11 +1,11 @@
-# @fixy/cli
+# @fixy/code
 
 Terminal REPL for Fixy Code — orchestrate installed coding agents in one conversation.
 
 ## Install
 
 ```sh
-npm install -g @fixy/cli
+npm install -g @fixy/code
 ```
 
 ## Usage

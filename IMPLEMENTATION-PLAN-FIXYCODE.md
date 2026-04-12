@@ -16,7 +16,7 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | License | MIT |
 | Language / runtime | Node.js 20+, TypeScript, strict mode |
 | Monorepo tool | pnpm workspaces |
-| v0 distribution | `npm install -g @fixy/cli` |
+| v0 distribution | `npm install -g @fixy/code` |
 | v0 surface | Terminal-only |
 | v0 platform | macOS first (Linux should work; Windows explicitly out of scope) |
 | v0 adapters | `@claude` (Claude Code), `@codex` (Codex CLI) |
@@ -38,7 +38,7 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 
 | Area | Feature |
 |---|---|
-| Install | `npm install -g @fixy/cli` → `fixy` on PATH |
+| Install | `npm install -g @fixy/code` → `fixy` on PATH |
 | CLI | `fixy` opens a REPL bound to a thread inside the current repo |
 | Adapters | `@claude` via `claude` binary, `@codex` via `codex` binary (both required on PATH) |
 | Auth | Zero. Inherited `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH` passed through to child processes. |
@@ -293,7 +293,7 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 - `/README.md` — one paragraph, link to this plan.
 - `/packages/core/package.json` + `tsconfig.json` — empty `src/index.ts`, name `@fixy/core`.
 - `/packages/adapter-utils/package.json` + `tsconfig.json` — empty `src/index.ts`, name `@fixy/adapter-utils`.
-- `/packages/cli/package.json` + `tsconfig.json` — empty `src/index.ts`, name `@fixy/cli`, `bin: { fixy: "./dist/cli.js" }`.
+- `/packages/cli/package.json` + `tsconfig.json` — empty `src/index.ts`, name `@fixy/code`, `bin: { fixy: "./dist/cli.js" }`.
 - `/packages/claude-adapter/package.json` + placeholder, name `@fixy/claude-adapter`.
 - `/packages/codex-adapter/package.json` + placeholder, name `@fixy/codex-adapter`.
 
@@ -301,7 +301,7 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 - `pnpm install` succeeds.
 - `pnpm -r typecheck` passes on all packages (even empty ones).
 - `pnpm -r build` produces a `dist/` for every package.
-- `@fixy/cli` resolves `@fixy/core` and `@fixy/adapter-utils` as workspace dependencies (not from npm).
+- `@fixy/code` resolves `@fixy/core` and `@fixy/adapter-utils` as workspace dependencies (not from npm).
 
 **Paperclip refs:** none — this step is pure scaffolding.
 
@@ -328,7 +328,7 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 
 #### Step 3 — GitHub Actions CI and release skeleton
 
-**Goal:** Every push to `main` and every PR runs typecheck + lint + test. A manually-triggered release workflow can publish `@fixy/cli` and its dependencies to npm.
+**Goal:** Every push to `main` and every PR runs typecheck + lint + test. A manually-triggered release workflow can publish `@fixy/code` and its dependencies to npm.
 
 **Create:**
 - `/.github/workflows/ci.yml` — matrix on Node 20, runs `pnpm install`, `pnpm -r typecheck`, `pnpm lint`, `pnpm test`.
@@ -499,9 +499,9 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 
 ---
 
-#### Step 10 — `@fixy/cli` terminal REPL
+#### Step 10 — `@fixy/code` terminal REPL
 
-**Goal:** `npm install -g @fixy/cli && cd my-repo && fixy` opens a usable multi-agent REPL bound to a thread in the current git repo, speaking to `@claude` and `@fixy` (Codex comes in Step 11).
+**Goal:** `npm install -g @fixy/code && cd my-repo && fixy` opens a usable multi-agent REPL bound to a thread in the current git repo, speaking to `@claude` and `@fixy` (Codex comes in Step 11).
 
 **Create:**
 - `/packages/cli/src/cli.ts` — main entry:
@@ -523,14 +523,14 @@ Each step has: goal, files to create, acceptance criteria, and the Paperclip ref
 **Acceptance:**
 - End-to-end **on a real machine where the user has Claude Code installed and logged in**:
   1. `pnpm -r build`
-  2. `pnpm --filter @fixy/cli link --global` (or `npm pack` + global install for a closer-to-production check)
+  2. `pnpm --filter @fixy/code link --global` (or `npm pack` + global install for a closer-to-production check)
   3. `cd ~/some-git-repo`
   4. `fixy`
   5. Type `@claude refactor the top of README.md for brevity` — see Claude's streamed response, and a `git diff` inside the worktree that matches the response.
   6. Type `@fixy /status` — see Claude listed.
   7. Type `@claude once more, this time even shorter` — Claude resumes the previous session (observe the `sessionId` reuse in `--resume`).
   8. Ctrl-C exits cleanly with no orphaned `git worktree` entries and no orphaned child processes.
-- Release workflow from Step 3 can be triggered manually on `main` and publishes `@fixy/core`, `@fixy/adapter-utils`, `@fixy/claude-adapter`, and `@fixy/cli` to npm under the `@fixy` scope.
+- Release workflow from Step 3 can be triggered manually on `main` and publishes `@fixy/core`, `@fixy/adapter-utils`, `@fixy/claude-adapter`, and `@fixy/code` to npm under the `@fixy` scope.
 
 **Paperclip refs:** none — Paperclip is server-side and has no REPL.
 
@@ -789,7 +789,7 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - GitHub repo `fixy-ai/fixy-code` created (public, MIT), initial commit pushed with plan + README + .gitignore.
 - **Step 12 rewritten:** Replaced the verdict/competition engine with the **collaboration engine** (`@fixy /all`). Agents collaborate (discuss → agree → batch max 5 TODOs → worker executes → agents review → next batch). Added review modes (auto/ask_me/manual) and collaboration modes (standard/critics/red_room/consensus). This reflects the user's core vision: agents work TOGETHER toward one result, not compete for a winner.
 - Added `/all` and `/settings` to the reserved commands table.
-- Fixed §8: "private repo" → "public repo", "@fixy/cli@0.0.0" → "@fixy/placeholder@0.0.1".
+- Fixed §8: "private repo" → "public repo", "@fixy/code@0.0.0" → "@fixy/placeholder@0.0.1".
 - Added probe results to §8 with dates and evidence.
 - Added worker clarification: Fixy routes between adapters, not between models within an adapter.
 - **v0 launch deliverable added:** Record a 2-minute demo video showing the full collaboration loop as the launch artifact.
