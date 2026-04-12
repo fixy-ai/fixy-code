@@ -38,3 +38,5 @@ export { parseUnifiedDiff } from './diff-parser.js';
 
 export { FixyCommandRunner } from './fixy-commands.js';
 export type { FixyCommandContext } from './fixy-commands.js';
+
+export { slugify } from './slugify.js';
