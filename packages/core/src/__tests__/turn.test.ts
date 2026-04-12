@@ -207,13 +207,30 @@ describe('TurnController', () => {
 
   // -------------------------------------------------------------------------
 
-  it('@fixy command returns stub system message', async () => {
+  it('@fixy /status returns adapter status', async () => {
     await controller.runTurn(makeParams({ input: '@fixy /status' }));
 
     const updated = await store.getThread(thread.id, thread.projectRoot);
     const systemMsg = updated.messages.find((m) => m.role === 'system');
 
-    expect(systemMsg?.content).toBe('command not yet implemented');
+    expect(systemMsg).toBeDefined();
+    expect(systemMsg?.content).toContain('claude');
+    expect(systemMsg?.content).toContain('codex');
+    expect(systemMsg?.content).toContain('yes');
+  });
+
+  // -------------------------------------------------------------------------
+
+  it('@fixy /worker changes workerModel', async () => {
+    expect(thread.workerModel).toBe('claude');
+
+    await controller.runTurn(makeParams({ input: '@fixy /worker codex' }));
+
+    const updated = await store.getThread(thread.id, thread.projectRoot);
+    expect(updated.workerModel).toBe('codex');
+
+    const systemMsg = updated.messages.find((m) => m.role === 'system');
+    expect(systemMsg?.content).toBe('worker set to codex');
   });
 
   // -------------------------------------------------------------------------

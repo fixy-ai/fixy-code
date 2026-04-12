@@ -7,6 +7,8 @@ import type { FixyMessage, FixyThread } from './thread.js';
 import type { AdapterRegistry } from './registry.js';
 import { Router } from './router.js';
 import type { LocalThreadStore } from './store.js';
+import { FixyCommandRunner } from './fixy-commands.js';
+import { WorktreeManager } from './worktree.js';
 
 export interface TurnParams {
   thread: FixyThread;
@@ -15,6 +17,7 @@ export interface TurnParams {
   store: LocalThreadStore;
   onLog: (stream: 'stdout' | 'stderr', chunk: string) => void;
   signal: AbortSignal;
+  worktreeManager?: WorktreeManager;
 }
 
 export class TurnController {
@@ -61,7 +64,16 @@ export class TurnController {
       }
 
       case 'fixy': {
-        await this._appendSystemMessage('command not yet implemented', params);
+        const runner = new FixyCommandRunner();
+        await runner.run({
+          thread: params.thread,
+          rest: parsed.rest,
+          store: params.store,
+          registry: params.registry,
+          worktreeManager: params.worktreeManager ?? new WorktreeManager(),
+          onLog: params.onLog,
+          signal: params.signal,
+        });
         break;
       }
 

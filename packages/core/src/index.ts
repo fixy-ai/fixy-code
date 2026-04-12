@@ -35,3 +35,6 @@ export type { TurnParams } from './turn.js';
 export { WorktreeManager } from './worktree.js';
 export type { WorktreeHandle } from './worktree.js';
 export { parseUnifiedDiff } from './diff-parser.js';
+
+export { FixyCommandRunner } from './fixy-commands.js';
+export type { FixyCommandContext } from './fixy-commands.js';
