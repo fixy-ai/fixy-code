@@ -13,7 +13,11 @@
   },
   "dependencies": {
     "@fixy/core": "workspace:*",
-    "@fixy/adapter-utils": "workspace:*"
+    "@fixy/adapter-utils": "workspace:*",
+    "@fixy/claude-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
   },
   "license": "MIT"
 }

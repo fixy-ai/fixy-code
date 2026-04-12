@@ -31,7 +31,7 @@ importers:
         version: 8.58.1(eslint@10.2.0)(typescript@6.0.2)
       vitest:
         specifier: ^4.1.4
-        version: 4.1.4(@types/node@20.19.39)(vite@8.0.8(@types/node@20.19.39))
+        version: 4.1.4(@types/node@22.19.17)(vite@8.0.8(@types/node@22.19.17))
 
   packages/adapter-utils:
     devDependencies:
@@ -57,9 +57,16 @@ importers:
       '@fixy/adapter-utils':
         specifier: workspace:*
         version: link:../adapter-utils
+      '@fixy/claude-adapter':
+        specifier: workspace:*
+        version: link:../claude-adapter
       '@fixy/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
 
   packages/codex-adapter:
     dependencies:
@@ -278,6 +285,9 @@ packages:
 
   '@types/node@20.19.39':
     resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
+
+  '@types/node@22.19.17':
+    resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
 
   '@typescript-eslint/eslint-plugin@8.58.1':
     resolution: {integrity: sha512-eSkwoemjo76bdXl2MYqtxg51HNwUSkWfODUOQ3PaTLZGh9uIWWFZIjyjaJnex7wXDu+TRx+ATsnSxdN9YWfRTQ==}
@@ -1227,6 +1237,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@22.19.17':
+    dependencies:
+      undici-types: 6.21.0
+
   '@typescript-eslint/eslint-plugin@8.58.1(@typescript-eslint/parser@8.58.1(eslint@10.2.0)(typescript@6.0.2))(eslint@10.2.0)(typescript@6.0.2)':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
@@ -1386,13 +1400,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.4(vite@8.0.8(@types/node@20.19.39))':
+  '@vitest/mocker@4.1.4(vite@8.0.8(@types/node@22.19.17))':
     dependencies:
       '@vitest/spy': 4.1.4
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.8(@types/node@20.19.39)
+      vite: 8.0.8(@types/node@22.19.17)
 
   '@vitest/pretty-format@4.1.4':
     dependencies:
@@ -1885,7 +1899,7 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  vite@8.0.8(@types/node@20.19.39):
+  vite@8.0.8(@types/node@22.19.17):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -1893,13 +1907,13 @@ snapshots:
       rolldown: 1.0.0-rc.15
       tinyglobby: 0.2.16
     optionalDependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.19.17
       fsevents: 2.3.3
 
-  vitest@4.1.4(@types/node@20.19.39)(vite@8.0.8(@types/node@20.19.39)):
+  vitest@4.1.4(@types/node@22.19.17)(vite@8.0.8(@types/node@22.19.17)):
     dependencies:
       '@vitest/expect': 4.1.4
-      '@vitest/mocker': 4.1.4(vite@8.0.8(@types/node@20.19.39))
+      '@vitest/mocker': 4.1.4(vite@8.0.8(@types/node@22.19.17))
       '@vitest/pretty-format': 4.1.4
       '@vitest/runner': 4.1.4
       '@vitest/snapshot': 4.1.4
@@ -1916,10 +1930,10 @@ snapshots:
       tinyexec: 1.1.1
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 8.0.8(@types/node@20.19.39)
+      vite: 8.0.8(@types/node@22.19.17)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 20.19.39
+      '@types/node': 22.19.17
     transitivePeerDependencies:
       - msw
 
