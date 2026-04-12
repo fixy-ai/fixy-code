@@ -127,16 +127,208 @@ describe('FixyCommandRunner', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 3: /all build something — returns stub message
+  // Test 3: /all without prompt — shows usage message
   // -------------------------------------------------------------------------
-  it('/all build something — returns stub collaboration message', async () => {
+  it('/all without prompt — shows usage message', async () => {
+    await runner.run(makeCtx({ rest: '/all' }));
+
+    const fresh = await store.getThread(thread.id, thread.projectRoot);
+    const sysMsg = fresh.messages.find(
+      (m) => m.role === 'system' && m.content.includes('/all requires a prompt'),
+    );
+    expect(sysMsg).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 3b: /all with no adapters — shows error
+  // -------------------------------------------------------------------------
+  it('/all with no adapters — shows error', async () => {
     await runner.run(makeCtx({ rest: '/all build something' }));
 
     const fresh = await store.getThread(thread.id, thread.projectRoot);
     const sysMsg = fresh.messages.find(
-      (m) => m.role === 'system' && m.content.includes('collaboration engine not yet implemented'),
+      (m) => m.role === 'system' && m.content.includes('at least one registered adapter'),
     );
     expect(sysMsg).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 3c: /all solo mode — single adapter skips discussion
+  // -------------------------------------------------------------------------
+  it('/all solo mode — single adapter runs plan+execute without discussion', async () => {
+    let callCount = 0;
+    const soloAdapter = createStubAdapter('claude', 'Claude', async (ctx) => {
+      callCount++;
+      // First call: plan breakdown → return numbered list
+      if (callCount === 1) {
+        return {
+          exitCode: 0, signal: null, timedOut: false,
+          summary: '1. Create auth module\n2. Add login endpoint',
+          session: null, patches: [], warnings: [], errorMessage: null,
+        };
+      }
+      // Second call: worker execution
+      return {
+        exitCode: 0, signal: null, timedOut: false,
+        summary: 'Implemented auth module and login endpoint',
+        session: null, patches: [], warnings: [], errorMessage: null,
+      };
+    });
+    registry.register(soloAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all build auth',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    expect(logs.some((l) => l.includes('Solo mode'))).toBe(true);
+    expect(logs.some((l) => l.includes('Phase 2'))).toBe(true);
+    expect(logs.some((l) => l.includes('Phase 3'))).toBe(true);
+
+    const fresh = await store.getThread(thread.id, thread.projectRoot);
+    const completionMsg = fresh.messages.find(
+      (m) => m.role === 'system' && m.content.includes('collaboration complete'),
+    );
+    expect(completionMsg).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 3d: /all multi-adapter — full discussion + worker + review
+  // -------------------------------------------------------------------------
+  it('/all multi-adapter — runs discussion, plan, worker execution, and review', async () => {
+    // Thinker agrees immediately
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'I agree with the plan. LGTM.\n1. Create util function\n2. Add tests',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    let workerCalls = 0;
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => {
+      workerCalls++;
+      return {
+        exitCode: 0, signal: null, timedOut: false,
+        summary: 'Done implementing the requested changes.',
+        session: null, patches: [], warnings: [], errorMessage: null,
+      };
+    });
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all build a utility',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    // Discussion should have ended early due to agreement
+    expect(logs.some((l) => l.includes('Phase 1'))).toBe(true);
+    expect(logs.some((l) => l.includes('Phase 2'))).toBe(true);
+    expect(logs.some((l) => l.includes('Phase 3'))).toBe(true);
+    expect(logs.some((l) => l.includes('Phase 5'))).toBe(true);
+    expect(workerCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 3e: /all review finds issues — worker gets fix attempt
+  // -------------------------------------------------------------------------
+  it('/all review issues — worker retries when thinker flags issues', async () => {
+    let thinkerCalls = 0;
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => {
+      thinkerCalls++;
+      // Discussion: agree immediately
+      if (thinkerCalls <= 1) {
+        return {
+          exitCode: 0, signal: null, timedOut: false,
+          summary: 'I agree.\n1. Fix the bug',
+          session: null, patches: [], warnings: [], errorMessage: null,
+        };
+      }
+      // Plan breakdown
+      if (thinkerCalls === 2) {
+        return {
+          exitCode: 0, signal: null, timedOut: false,
+          summary: '1. Fix the bug',
+          session: null, patches: [], warnings: [], errorMessage: null,
+        };
+      }
+      // First review: flag issue
+      if (thinkerCalls === 3) {
+        return {
+          exitCode: 0, signal: null, timedOut: false,
+          summary: 'ISSUES: Missing error handling',
+          session: null, patches: [], warnings: [], errorMessage: null,
+        };
+      }
+      // Second review: approve
+      return {
+        exitCode: 0, signal: null, timedOut: false,
+        summary: 'APPROVED',
+        session: null, patches: [], warnings: [], errorMessage: null,
+      };
+    });
+
+    let workerCalls = 0;
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => {
+      workerCalls++;
+      return {
+        exitCode: 0, signal: null, timedOut: false,
+        summary: `Worker output attempt ${workerCalls}`,
+        session: null, patches: [], warnings: [], errorMessage: null,
+      };
+    });
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all fix the bug',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    // Worker should have been called at least twice (initial + fix)
+    expect(workerCalls).toBeGreaterThanOrEqual(2);
+    expect(logs.some((l) => l.includes('Phase 4'))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 3f: /all caps TODOs at 20
+  // -------------------------------------------------------------------------
+  it('/all caps TODO list at 20 items', async () => {
+    const longList = Array.from({ length: 25 }, (_, i) => `${i + 1}. Task item ${i + 1}`).join('\n');
+    let callCount = 0;
+    const soloAdapter = createStubAdapter('claude', 'Claude', async () => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          exitCode: 0, signal: null, timedOut: false,
+          summary: longList,
+          session: null, patches: [], warnings: [], errorMessage: null,
+        };
+      }
+      return {
+        exitCode: 0, signal: null, timedOut: false,
+        summary: 'Done',
+        session: null, patches: [], warnings: [], errorMessage: null,
+      };
+    });
+    registry.register(soloAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all big task',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    // Should report exactly 20 TODOs
+    expect(logs.some((l) => l.includes('20 TODO items'))).toBe(true);
   });
 
   // -------------------------------------------------------------------------

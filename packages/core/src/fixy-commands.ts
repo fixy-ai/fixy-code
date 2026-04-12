@@ -36,7 +36,7 @@ export class FixyCommandRunner {
         await this._handleWorker(args, ctx);
         break;
       case '/all':
-        await this._handleAll(ctx);
+        await this._handleAll(args, ctx);
         break;
       case '/settings':
         await this._handleSettings(ctx);
@@ -76,11 +76,241 @@ export class FixyCommandRunner {
     ctx.thread.workerModel = adapterId;
   }
 
-  private async _handleAll(ctx: FixyCommandContext): Promise<void> {
-    await this._appendSystemMessage(
-      'collaboration engine not yet implemented — arriving in Step 12',
-      ctx,
-    );
+  private async _handleAll(prompt: string, ctx: FixyCommandContext): Promise<void> {
+    if (!prompt.trim()) {
+      await this._appendSystemMessage('/all requires a prompt — usage: @fixy /all <prompt>', ctx);
+      return;
+    }
+
+    const allAdapters = ctx.registry.list();
+    if (allAdapters.length === 0) {
+      await this._appendSystemMessage('/all requires at least one registered adapter', ctx);
+      return;
+    }
+
+    const workerId = ctx.thread.workerModel ?? allAdapters[0]!.id;
+    const workerAdapter = ctx.registry.require(workerId);
+    const thinkers = allAdapters.filter((a) => a.id !== workerId);
+    const soloMode = thinkers.length === 0;
+
+    const log = (msg: string): void => {
+      ctx.onLog('stdout', msg);
+    };
+
+    // Helpers to call an adapter and record its response
+    const callAdapter = async (
+      adapter: typeof workerAdapter,
+      adapterPrompt: string,
+    ): Promise<string> => {
+      const runId = randomUUID();
+      const execCtx: FixyExecutionContext = {
+        runId,
+        agent: { id: adapter.id, name: adapter.name },
+        threadContext: {
+          threadId: ctx.thread.id,
+          projectRoot: ctx.thread.projectRoot,
+          worktreePath: ctx.thread.projectRoot,
+          repoRef: null,
+        },
+        messages: ctx.thread.messages,
+        prompt: adapterPrompt,
+        session: ctx.thread.agentSessions[adapter.id] ?? null,
+        onLog: ctx.onLog,
+        onMeta: () => {},
+        onSpawn: () => {},
+        signal: ctx.signal,
+      };
+
+      const result = await adapter.execute(execCtx);
+      ctx.thread.agentSessions[adapter.id] = result.session;
+
+      const agentMsg: FixyMessage = {
+        id: randomUUID(),
+        createdAt: new Date().toISOString(),
+        role: 'agent',
+        agentId: adapter.id,
+        content: result.summary,
+        runId,
+        dispatchedTo: [],
+        patches: result.patches,
+        warnings: result.warnings,
+      };
+      await ctx.store.appendMessage(ctx.thread.id, ctx.thread.projectRoot, agentMsg);
+
+      return result.summary;
+    };
+
+    // ── PHASE 1: DISCUSSION ──
+    let discussionLog: Array<{ agentId: string; content: string }> = [];
+
+    if (soloMode) {
+      log('\n[fixy /all] Solo mode — skipping discussion phase\n');
+    } else {
+      log('\n[fixy /all] Phase 1: discussion\n');
+      const systemFraming =
+        'You are a thinker agent. Discuss this task with the other agents. Goal: agree on a full implementation plan.';
+
+      for (let round = 1; round <= 5; round++) {
+        log(`\n[fixy /all] Phase 1: discussion round ${round}/5\n`);
+
+        let allAgree = true;
+        for (const thinker of thinkers) {
+          const threadContext = discussionLog
+            .map((e) => `[${e.agentId}]: ${e.content}`)
+            .join('\n\n');
+
+          const thinkerPrompt =
+            round === 1
+              ? `${systemFraming}\n\nUser task: ${prompt}` +
+                (threadContext ? `\n\nDiscussion so far:\n${threadContext}` : '')
+              : `${systemFraming}\n\nUser task: ${prompt}\n\nDiscussion so far:\n${threadContext}`;
+
+          const response = await callAdapter(thinker, thinkerPrompt);
+          discussionLog.push({ agentId: thinker.id, content: response });
+
+          const lower = response.toLowerCase();
+          const agreeSignals = ['agree', 'looks good', 'lgtm', 'i agree with the plan'];
+          if (!agreeSignals.some((s) => lower.includes(s))) {
+            allAgree = false;
+          }
+        }
+
+        if (allAgree) {
+          log('\n[fixy /all] Phase 1: all thinkers agree — ending discussion\n');
+          break;
+        }
+      }
+    }
+
+    // ── PHASE 2: PLAN BREAKDOWN ──
+    log('\n[fixy /all] Phase 2: plan breakdown\n');
+
+    const planPrompt =
+      'Break the agreed plan into ordered TODO items. Each TODO must be a concrete, scoped coding instruction. Output ONLY a numbered list, max 20 items total, no prose.';
+
+    const planContext = discussionLog.map((e) => `[${e.agentId}]: ${e.content}`).join('\n\n');
+    const fullPlanPrompt = planContext
+      ? `User task: ${prompt}\n\nDiscussion:\n${planContext}\n\n${planPrompt}`
+      : `User task: ${prompt}\n\n${planPrompt}`;
+
+    let todos: string[] = [];
+
+    if (soloMode) {
+      const response = await callAdapter(workerAdapter, fullPlanPrompt);
+      todos = this._parseTodoList(response);
+    } else {
+      const responses: string[] = [];
+      for (const thinker of thinkers) {
+        const response = await callAdapter(thinker, fullPlanPrompt);
+        responses.push(response);
+      }
+      // Merge and deduplicate
+      const allTodos = responses.flatMap((r) => this._parseTodoList(r));
+      const seen = new Set<string>();
+      for (const todo of allTodos) {
+        if (!seen.has(todo)) {
+          seen.add(todo);
+          todos.push(todo);
+        }
+      }
+    }
+
+    // Cap at 20
+    todos = todos.slice(0, 20);
+
+    if (todos.length === 0) {
+      await this._appendSystemMessage('/all failed — could not extract TODO items from plan', ctx);
+      return;
+    }
+
+    log(`\n[fixy /all] Phase 2: ${todos.length} TODO items extracted\n`);
+
+    // ── PHASE 3+4: WORKER EXECUTION + REVIEW (batches of 5) ──
+    const batches: string[][] = [];
+    for (let i = 0; i < todos.length; i += 5) {
+      batches.push(todos.slice(i, i + 5));
+    }
+
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      const batch = batches[batchIdx]!;
+      log(
+        `\n[fixy /all] Phase 3: worker executing batch ${batchIdx + 1}/${batches.length} (${batch.length} TODOs)\n`,
+      );
+
+      const batchList = batch.map((t, i) => `${i + 1}. ${t}`).join('\n');
+      const workerPrompt = `Execute these TODO items exactly as written. Write the actual code. Report what you did for each item.\n\n${batchList}`;
+
+      let workerOutput = await callAdapter(workerAdapter, workerPrompt);
+
+      // Review loop (skip in solo mode)
+      if (!soloMode) {
+        let approved = false;
+        for (let attempt = 0; attempt < 2 && !approved; attempt++) {
+          log(
+            `\n[fixy /all] Phase 4: review of batch ${batchIdx + 1} (attempt ${attempt + 1}/2)\n`,
+          );
+
+          let issues: string[] = [];
+          for (const thinker of thinkers) {
+            const reviewPrompt = `Review this worker output. Did it implement the TODOs correctly? Reply ONLY with: APPROVED or ISSUES: <description>.\n\nTODOs:\n${batchList}\n\nWorker output:\n${workerOutput}`;
+            const reviewResponse = await callAdapter(thinker, reviewPrompt);
+
+            if (reviewResponse.toUpperCase().includes('ISSUES')) {
+              issues.push(reviewResponse);
+            }
+          }
+
+          if (issues.length === 0) {
+            approved = true;
+            log(`\n[fixy /all] Phase 4: batch ${batchIdx + 1} approved\n`);
+          } else {
+            const fixPrompt = `The reviewers found issues with your implementation. Fix them:\n\n${issues.join('\n\n')}\n\nOriginal TODOs:\n${batchList}`;
+            workerOutput = await callAdapter(workerAdapter, fixPrompt);
+          }
+        }
+
+        if (!thinkers.length) {
+          log(`\n[fixy /all] Phase 4: batch ${batchIdx + 1} approved (solo)\n`);
+        }
+      }
+    }
+
+    // ── PHASE 5: FINAL REVIEW ──
+    log('\n[fixy /all] Phase 5: final review\n');
+
+    if (!soloMode) {
+      const threadSummary = ctx.thread.messages
+        .filter((m) => m.role === 'agent')
+        .map((m) => `[${m.agentId}]: ${m.content}`)
+        .join('\n\n');
+
+      const finalPrompt = `This is the final output. Do a complete review. Reply ONLY with: APPROVED or ISSUES: <description>.\n\n${threadSummary}`;
+
+      const finalResults: string[] = [];
+      for (const thinker of thinkers) {
+        const response = await callAdapter(thinker, finalPrompt);
+        finalResults.push(`[${thinker.id}]: ${response}`);
+      }
+
+      await this._appendSystemMessage(
+        `[fixy /all] collaboration complete\n\nFinal review:\n${finalResults.join('\n')}`,
+        ctx,
+      );
+    } else {
+      await this._appendSystemMessage('[fixy /all] collaboration complete (solo mode)', ctx);
+    }
+  }
+
+  private _parseTodoList(text: string): string[] {
+    const lines = text.split('\n');
+    const todos: string[] = [];
+    for (const line of lines) {
+      const match = line.match(/^\s*\d+[\.\)]\s+(.+)/);
+      if (match?.[1]) {
+        todos.push(match[1].trim());
+      }
+    }
+    return todos;
   }
 
   private async _handleSettings(ctx: FixyCommandContext): Promise<void> {
