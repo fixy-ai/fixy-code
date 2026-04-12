@@ -806,6 +806,20 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - All 126 tests still pass. Build clean across all 5 packages.
 - Next: Step 12 — collaboration engine (`@fixy /all`).
 
+### 2026-04-12 (session 4) — Step 12: collaboration engine (`@fixy /all`)
+
+- Implemented the full 5-phase collaboration loop in `FixyCommandRunner._handleAll()` (~200 lines).
+  - Phase 1: multi-adapter discussion (up to 5 rounds, early exit on agreement signals).
+  - Phase 2: plan breakdown into ordered TODO list (capped at 20, deduplicated).
+  - Phase 3: worker executes TODOs in batches of 5.
+  - Phase 4: thinker review with up to 2 fix attempts per batch.
+  - Phase 5: final review by all thinkers.
+- Solo mode: single adapter skips discussion, acts as both planner and worker.
+- 10 new tests added to `fixy-commands.test.ts` covering solo mode, multi-adapter, review issues with retry, TODO cap, error cases.
+- Removed dead code (unreachable `if (!thinkers.length)` inside `!soloMode` block).
+- All 136 tests pass. Typecheck and build clean across all 5 packages.
+- **All 12 implementation steps are now complete.**
+
 ### 2026-04-12 — Probes passed, repo created, plan corrected
 
 - All three "first 30 minutes" probes passed: Claude auth passthrough ✅, Codex auth passthrough ✅, git worktree ✅.

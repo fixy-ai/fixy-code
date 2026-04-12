@@ -269,9 +269,6 @@ export class FixyCommandRunner {
           }
         }
 
-        if (!thinkers.length) {
-          log(`\n[fixy /all] Phase 4: batch ${batchIdx + 1} approved (solo)\n`);
-        }
       }
     }
 
