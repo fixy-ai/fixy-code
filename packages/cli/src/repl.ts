@@ -40,6 +40,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   let turnActive = false;
   let turnAbort: AbortController | null = null;
+  let spinner: ReturnType<typeof createSpinner> | null = null;
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -49,6 +50,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   // ── Autocomplete menus (TTY only) ──────────────────────────────────────────
   if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
     readline.emitKeypressEvents(process.stdin, rl);
 
     const atMenu: Array<{ name: string; desc: string }> = [
@@ -84,7 +86,22 @@ export async function startRepl(params: ReplParams): Promise<void> {
       menuHeight = lines.length;
     };
 
-    process.stdin.on('keypress', (_str, _key) => {
+    process.stdin.on('keypress', (_str, key) => {
+      if (key?.name === 'escape') {
+        eraseMenu();
+        if (turnActive && turnAbort) {
+          turnAbort.abort();
+          turnAbort = null;
+          turnActive = false;
+          spinner?.stop();
+          spinner = null;
+          process.stdout.write('\x1b[38;5;105m⊘ cancelled\x1b[0m\n');
+        } else {
+          process.stdout.write('\r\x1b[2K');
+          process.stdout.write(PROMPT);
+        }
+        return;
+      }
       if (turnActive) {
         eraseMenu();
         return;
@@ -112,7 +129,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       turnAbort.abort();
       turnAbort = null;
       turnActive = false;
-      process.stdout.write('\x1b[33m(turn cancelled)\x1b[0m\n');
+      process.stdout.write('\x1b[38;5;105m(turn cancelled)\x1b[0m\n');
     } else {
       process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       process.exit(0);
@@ -144,19 +161,27 @@ export async function startRepl(params: ReplParams): Promise<void> {
     turnAbort = new AbortController();
     turnActive = true;
 
-    const spinner = createSpinner();
+    spinner = createSpinner();
 
     try {
       thread = await store.getThread(thread.id, thread.projectRoot);
 
       spinner.start('thinking...');
 
+      let headerPrinted = false;
+
       await turnController.runTurn({
         thread,
         input,
         registry,
         store,
-        onLog: (_stream: 'stdout' | 'stderr', chunk: string) => {
+        onLog: (_stream: 'stdout' | 'stderr', chunk: string, agentId?: string) => {
+          if (!headerPrinted && _stream === 'stdout') {
+            spinner?.stop();
+            spinner = null;
+            process.stdout.write(`\x1b[38;5;105m@${agentId ?? ''}\x1b[0m\n`);
+            headerPrinted = true;
+          }
           process.stdout.write(chunk);
         },
         signal: turnAbort.signal,
@@ -183,9 +208,11 @@ export async function startRepl(params: ReplParams): Promise<void> {
         process.stderr.write(`\x1b[31merror:\x1b[0m ${msg}\n`);
       }
     } finally {
-      spinner.stop();
+      spinner?.stop();
+      spinner = null;
       turnActive = false;
       turnAbort = null;
+      process.stdout.write('\n');
     }
   }
 

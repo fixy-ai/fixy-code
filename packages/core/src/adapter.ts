@@ -27,7 +27,7 @@ export interface FixyExecutionContext {
   /** Opaque adapter-owned state from the previous turn in this thread. */
   session: FixySession | null;
   /** Streamed stdout/stderr chunks. Adapters MUST call this. */
-  onLog: (stream: 'stdout' | 'stderr', chunk: string) => void;
+  onLog: (stream: 'stdout' | 'stderr', chunk: string, agentId?: string) => void;
   /** Called once with the resolved command + args + env for transcript/logging. */
   onMeta: (meta: FixyInvocationMeta) => void;
   /** Called with the child pid the moment the process spawns. */

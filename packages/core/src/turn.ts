@@ -15,7 +15,7 @@ export interface TurnParams {
   input: string;
   registry: AdapterRegistry;
   store: LocalThreadStore;
-  onLog: (stream: 'stdout' | 'stderr', chunk: string) => void;
+  onLog: (stream: 'stdout' | 'stderr', chunk: string, agentId?: string) => void;
   signal: AbortSignal;
   worktreeManager?: WorktreeManager;
 }
@@ -123,7 +123,7 @@ export class TurnController {
       messages: freshThread.messages,
       prompt: body,
       session: freshThread.agentSessions[agentId] ?? null,
-      onLog: params.onLog,
+      onLog: (stream, chunk) => params.onLog(stream, chunk, agentId),
       onMeta: () => {},
       onSpawn: () => {},
       signal: params.signal,
