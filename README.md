@@ -72,13 +72,21 @@ That's it. Fixy detects which agents you have installed and shows them in the he
 Fixy checks for updates automatically every time you start it. If a new version is available, you will see:
 
 ```
-  ℹ  fixy v0.0.7 available → npm install -g @fixy/code
+  ℹ  fixy v0.0.8 available — update now? (y/n)
 ```
+
+Press `y` to update in one click. Press `n` to skip and continue.
 
 To update manually:
 
 ```bash
 npm install -g @fixy/code
+```
+
+To uninstall:
+
+```bash
+npm uninstall -g @fixy/code
 ```
 
 ---
