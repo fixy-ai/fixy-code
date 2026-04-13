@@ -11,21 +11,24 @@ import { PROMPT, createSpinner } from './format.js';
 
 // ── ANSI color constants for output styling ──
 const OUT_RESET = '\x1b[0m';
-const OUT_DIM = '\x1b[2m';           // dim gray — agent speech
-const OUT_CODE = '\x1b[37m';         // bright white — code
+const OUT_TEXT = '\x1b[38;5;252m';   // light gray — agent speech
+const OUT_CODE = '\x1b[97m';         // bright white — code
 const OUT_CODE_FENCE = '\x1b[2;36m'; // dim cyan — ``` markers
-const OUT_HEADING = '\x1b[1;37m';    // bold white — headings
+const OUT_HEADING = '\x1b[1;97m';    // bold bright white — headings
 const OUT_STDERR = '\x1b[2;31m';     // dim red — stderr
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /\x1b\[/;           // detect pre-colored lines
 
 /** Strip markdown formatting from terminal output. */
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')       // ***bold italic***
-    .replace(/\*\*(.+?)\*\*/gs, '$1')            // **bold**
-    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/gs, '$1')  // *italic* (not ** or ***)
-    .replace(/^#{1,6}\s+/gm, '')                 // ## headings
-    .replace(/^(\s*)\*\s{2,}/gm, '$1• ')         // *   bullet → •
+    .replace(/^(\s*)\*\s+/gm, '$1• ')            // * bullet → • (must be before bold/italic)
     .replace(/^(\s*)-\s+/gm, '$1• ')             // - bullet → •
+    .replace(/^(\s*)\d+\.\s+/gm, '$1')           // 1. numbered list → strip number
+    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')        // ***bold italic***
+    .replace(/\*\*(.+?)\*\*/gs, '$1')            // **bold**
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '$1')  // *italic*
+    .replace(/^#{1,6}\s+/gm, '')                 // ## headings
     .replace(/`([^`\n]+)`/g, '$1');               // `inline code`
 }
 
@@ -57,18 +60,20 @@ function createColorizer(): {
           continue;
         }
 
-        if (inCodeBlock) {
+        // Skip lines that already have ANSI codes (e.g. ── @agent ── separators)
+        if (ANSI_RE.test(line)) {
+          colored.push(line);
+        } else if (inCodeBlock) {
           // Code — bright white
           colored.push(`${OUT_CODE}${line}${OUT_RESET}`);
         } else {
           const isHeading = /^#{1,6}\s/.test(line);
           const stripped = stripMarkdown(line);
           if (isHeading) {
-            // Headings — bold white
             colored.push(`${OUT_HEADING}${stripped}${OUT_RESET}`);
           } else {
-            // Regular text — dim gray
-            colored.push(`${OUT_DIM}${stripped}${OUT_RESET}`);
+            // Regular text — light gray
+            colored.push(`${OUT_TEXT}${stripped}${OUT_RESET}`);
           }
         }
       }
