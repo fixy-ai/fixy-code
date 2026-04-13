@@ -93,7 +93,9 @@ export class FixyCommandRunner {
       const adapters = ctx.registry.list();
       const lines: string[] = ['WORKER_SELECT', 'Choose your default worker:'];
       for (let i = 0; i < adapters.length; i++) {
-        lines.push(`  [${i + 1}] @${adapters[i]!.id} — ${adapters[i]!.name}`);
+        const adapter = adapters[i];
+        if (!adapter) continue;
+        lines.push(`  [${i + 1}] @${adapter.id} — ${adapter.name}`);
       }
       await this._appendSystemMessage(lines.join('\n'), ctx);
       return;
@@ -138,7 +140,7 @@ export class FixyCommandRunner {
       return;
     }
 
-    const workerId = ctx.thread.workerModel ?? allAdapters[0]!.id;
+    const workerId = ctx.thread.workerModel ?? allAdapters[0]?.id ?? '';
     const workerAdapter = ctx.registry.require(workerId);
     const thinkers = allAdapters.filter((a) => a.id !== workerId);
     const soloMode = thinkers.length === 0;
@@ -193,7 +195,7 @@ export class FixyCommandRunner {
 
     // ── PHASE 1: DISCUSSION ──
     const settings = await loadSettings();
-    let discussionLog: Array<{ agentId: string; content: string }> = [];
+    const discussionLog: Array<{ agentId: string; content: string }> = [];
 
     if (soloMode) {
       log('\n[fixy /all] Solo mode — skipping discussion phase\n');
@@ -207,7 +209,8 @@ export class FixyCommandRunner {
 
         let allAgree = true;
         for (let ti = 0; ti < thinkers.length; ti++) {
-          const thinker = thinkers[ti]!;
+          const thinker = thinkers[ti];
+          if (!thinker) continue;
           const threadContext = discussionLog
             .map((e) => `[${e.agentId}]: ${e.content}`)
             .join('\n\n');
@@ -236,8 +239,8 @@ export class FixyCommandRunner {
         if (settings.redRoomMode && thinkers.length >= 2) {
           const agentMsgs = ctx.thread.messages.filter((m) => m.role === 'agent');
           const lastTwo = agentMsgs.slice(-2);
-          if (lastTwo.length === 2) {
-            const disagreement = detectDisagreement(lastTwo[0]!, lastTwo[1]!);
+          if (lastTwo.length === 2 && lastTwo[0] && lastTwo[1]) {
+            const disagreement = detectDisagreement(lastTwo[0], lastTwo[1]);
             if (disagreement) {
               await this._appendSystemMessage(this._formatDisagreementPanel(disagreement), ctx);
               return;
@@ -302,7 +305,8 @@ export class FixyCommandRunner {
     }
 
     for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
-      const batch = batches[batchIdx]!;
+      const batch = batches[batchIdx];
+      if (!batch) continue;
       log(
         `\n[fixy /all] Phase 3: worker executing batch ${batchIdx + 1}/${batches.length} (${batch.length} TODOs)\n`,
       );
@@ -320,7 +324,7 @@ export class FixyCommandRunner {
             `\n[fixy /all] Phase 4: review of batch ${batchIdx + 1} (attempt ${attempt + 1}/2)\n`,
           );
 
-          let issues: string[] = [];
+          const issues: string[] = [];
           for (const thinker of thinkers) {
             const reviewPrompt = `Review this worker output. Did it implement the TODOs correctly? Reply ONLY with: APPROVED or ISSUES: <description>.\n\nTODOs:\n${batchList}\n\nWorker output:\n${workerOutput}`;
             const reviewResponse = await callAdapter(thinker, reviewPrompt);
@@ -372,7 +376,7 @@ export class FixyCommandRunner {
     const lines = text.split('\n');
     const todos: string[] = [];
     for (const line of lines) {
-      const match = line.match(/^\s*\d+[\.\)]\s+(.+)/);
+      const match = line.match(/^\s*\d+[.)]\s+(.+)/);
       if (match?.[1]) {
         todos.push(match[1].trim());
       }
@@ -639,7 +643,7 @@ export class FixyCommandRunner {
     }
 
     const parts = trimmed.split(/\s+/);
-    const adapterHandle = parts[0]!;
+    const adapterHandle = parts[0] ?? '';
     const adapterId = adapterHandle.slice(1);
     const subCommand = parts[1];
 
@@ -663,7 +667,8 @@ export class FixyCommandRunner {
     const lines: string[] = ['ADAPTER_TOGGLE_SELECT', 'Providers (type number to toggle on/off, Enter to dismiss):'];
 
     for (let i = 0; i < adapters.length; i++) {
-      const adapter = adapters[i]!;
+      const adapter = adapters[i];
+      if (!adapter) continue;
       const isDisabled = disabled.includes(adapter.id);
       let currentModel: string;
       if (adapter.id === 'claude') {
@@ -720,7 +725,8 @@ export class FixyCommandRunner {
     const lines: string[] = [`MODEL_SELECT @${adapterId}`, 'Models:'];
 
     for (let i = 0; i < models.length; i++) {
-      const m = models[i]!;
+      const m = models[i];
+      if (!m) continue;
       const desc = m.description ? `  — ${m.description}` : '';
       lines.push(`  [${i + 1}] ${m.id}${desc}`);
     }
@@ -748,8 +754,8 @@ export class FixyCommandRunner {
     const numMatch = /^(\d+)/.exec(selection);
     const letterMatch = /([a-d])$/i.exec(selection);
 
-    const modelIndex = numMatch ? parseInt(numMatch[1]!, 10) - 1 : -1;
-    const effortLetter = letterMatch ? letterMatch[1]!.toLowerCase() : null;
+    const modelIndex = numMatch ? parseInt(numMatch[1] ?? '', 10) - 1 : -1;
+    const effortLetter = letterMatch ? (letterMatch[1] ?? '').toLowerCase() : null;
 
     const effortMap: Record<string, string> = {
       a: 'low',

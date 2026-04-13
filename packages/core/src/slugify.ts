@@ -19,6 +19,7 @@ const TRANSLITERATION_MAP: Record<string, string> = {
 export function slugify(input: string): string {
   return input
     .normalize('NFKD')
+    // eslint-disable-next-line no-control-regex
     .replace(/[^\u0000-\u007F]/g, (ch) => TRANSLITERATION_MAP[ch] ?? '')
     // 1. Convert to lowercase
     .toLowerCase()

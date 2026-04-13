@@ -1,7 +1,6 @@
 // packages/core/src/store.ts
 
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 

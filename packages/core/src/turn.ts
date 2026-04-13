@@ -94,7 +94,8 @@ export class TurnController {
   private _buildMessageList(messages: FixyMessage[]): FixyMessage[] {
     // Find the last compact point; if found, send only that message + everything after it.
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]!.compacted === true) {
+      const msg = messages[i];
+      if (msg?.compacted === true) {
         return messages.slice(i);
       }
     }
