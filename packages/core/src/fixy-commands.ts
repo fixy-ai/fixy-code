@@ -880,12 +880,13 @@ export class FixyCommandRunner {
   private async _handleNew(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
 
-    // Free plan (not signed in or free tier) — locked to 1 thread
-    if (!auth || auth.plan === 'free') {
+    // Not signed in — enforce free plan limits locally (3 active threads)
+    if (!auth) {
+      const FREE_THREAD_LIMIT = 3;
       const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
-      if (threads.length >= 1) {
+      if (threads.length >= FREE_THREAD_LIMIT) {
         await this._appendSystemMessage(
-          'Free plan allows only 1 session.\nSign in and upgrade at https://fixy.ai/dashboard/code to unlock more.\nUse /threads to view existing sessions.',
+          `Session limit reached (${threads.length}/${FREE_THREAD_LIMIT} on free plan).\nSign in with /login or upgrade at https://fixy.ai/dashboard/code\nUse /threads to view existing sessions.`,
           ctx,
         );
         return;
@@ -899,7 +900,7 @@ export class FixyCommandRunner {
       return;
     }
 
-    // Signed in — register session server-side (server enforces limits)
+    // Signed in — register session server-side (server enforces plan limits)
     try {
       const newThread = await ctx.store.createThread(ctx.thread.projectRoot);
       newThread.workerModel = ctx.thread.workerModel;

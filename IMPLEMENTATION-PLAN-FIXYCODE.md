@@ -103,10 +103,12 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | Install | `npm install -g @fixy/code` → `fixy` on PATH |
 | CLI | `fixy` opens a REPL bound to a thread inside the current repo |
 | Adapters | `@claude` via `claude` binary, `@codex` via `codex` binary (both required on PATH) |
-| Auth | Zero. Inherited `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH` passed through to child processes. |
+| Adapter Auth | Inherited `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PATH` passed through to child processes. |
 | Routing | `@claude`, `@codex`, `@fixy` mention dispatch inside one shared thread |
 | Worker | `@fixy` answers via whichever adapter the user has set as the worker |
-| Commands | `/all`, `/worker`, `/settings`, `/reset`, `/status` |
+| Commands | `/all`, `/worker`, `/settings`, `/reset`, `/status`, `/model`, `/login`, `/logout`, `/new`, `/threads`, `/account`, `/upgrade`, `/compact`, `/red-room` |
+| Auth (fixy.ai) | Device code flow via `https://fixy.ai/api/code/auth/device`. Token stored in `~/.fixy/auth.json`. Plan sync, session registration, heartbeat on startup. |
+| API Client | `packages/core/src/api.ts` — `fetchProfile`, `registerSession`, `heartbeat`, `deleteSession`, `listSessions`, `fetchPlans`, `fetchUsage` |
 | Isolation | `git worktree` per `(thread, agent)` under `.fixy/worktrees/<thread-id>/<agent>/` |
 | Persistence | Thread + message log JSON files under `~/.fixy/projects/<project-hash>/threads/<thread-id>.json` |
 | Streaming | Live stdout/stderr passthrough from adapter child processes to the terminal |
@@ -122,7 +124,7 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | Cross-agent session codec / shared memory bridge | v0.3 |
 | Third adapter (Gemini CLI / OpenCode / Aider) | v0.4 |
 | Context summarization / compaction | v0.5 |
-| Stripe billing + Pro/Team gating | v1.0 |
+| Stripe billing + Pro/Team gating | v1.0 (CLI-side integration DONE — backend at fixy.ai handles billing) |
 | Team sync / shared workspaces | v2.0 |
 | Windows support | Later |
 | Patch auto-apply to main branch | Never in v0; verdict shows, user decides |
@@ -322,17 +324,24 @@ The router owns every user message the moment it arrives. These rules are the fu
 
 ## 5. `@fixy` Reserved Commands
 
-These four commands are the entire `@fixy` command surface in v0. Anything else after `@fixy` that is not one of these is treated under rule 3 (worker delegation).
-
 | Command | Signature | Behavior |
 |---|---|---|
 | `/all` | `@fixy /all <prompt>` | Trigger the **collaboration engine** (see Step 12). All registered thinker agents discuss the prompt together, agree on an implementation plan, break it into batches of max 5 TODOs, hand each batch to the worker(s), review the output, and iterate until the full plan is complete and approved. This is the core feature of Fixy Code. |
 | `/worker` | `@fixy /worker <adapterId>` | Set this thread's worker to `<adapterId>`. Must resolve to a registered adapter. Persists in the thread's `workerModel` field. Takes effect immediately, including for the next bare-`@fixy` message. |
+| `/model` | `@fixy /model [@<adapterId>]` | View or change the model for an adapter. Without args, shows all adapters with their current models and enabled/disabled status. With an adapter mention, shows available models for that adapter and lets the user pick one. |
 | `/settings` | `@fixy /settings [<key> <value>]` | View or update collaboration settings for this session. Without args, print current settings. With args, update one setting. Keys: `reviewMode` (`auto`/`ask_me`/`manual`), `collaborationMode` (`standard`/`critics`/`red_room`/`consensus`), `maxDiscussionRounds` (1–10), `maxReviewRounds` (1–5), `maxTodosPerBatch` (1–5), `workerCount` (1–5). Persists in `~/.fixy/settings.json`. |
 | `/reset` | `@fixy /reset` | Abort any in-flight adapter turn, clear all `agentSessions` in the thread (so the next invocation starts a fresh adapter session), and delete + recreate the thread worktree. Does **not** delete the thread or its message history. |
 | `/status` | `@fixy /status` | Print one line per registered adapter: `id`, `name`, `probe().available`, `probe().version`, `probe().authStatus`, plus the current `workerModel`, review mode, collaboration mode, and per-adapter `sessionId`s for this thread. |
+| `/compact` | `@fixy /compact [<adapterId>]` | Reset the adapter session for the given adapter (or the worker if no arg). Clears the session state so the next invocation starts fresh. Useful when an adapter's context is stale. |
+| `/red-room` | `@fixy /red-room [on\|off]` | Toggle adversarial mode. When on, the second agent receives the first agent's proposal with hostile framing ("find everything wrong"). Toggle shows current state if no arg. |
+| `/login` | `@fixy /login` | Start the device code auth flow. Generates a code, shows a URL (`https://fixy.ai/code/verify?code=XXXX`), and polls until the user approves from the browser. Saves token to `~/.fixy/auth.json`. |
+| `/logout` | `@fixy /logout` | Clear the auth token from `~/.fixy/auth.json`. Reverts to free plan. |
+| `/new` | `@fixy /new` | Create a new thread/session. **Anonymous users:** enforced locally at free plan limit (3 threads). **Signed-in users:** server enforces plan limits via `POST /api/code/sessions` — returns 403 `SESSION_LIMIT_REACHED` when over limit. Plan limits: Free=3, Pro=unlimited, Team=unlimited, Business=unlimited. |
+| `/threads` | `@fixy /threads [<id>]` | List all threads for the current project with message count and last-updated date. With an ID arg, shows how to switch to that thread. |
+| `/account` | `@fixy /account` | Show account info from the server: email, plan, sessions used/limit, thread limit, project limit, history retention, subscription status and renewal date. Requires sign-in. |
+| `/upgrade` | `@fixy /upgrade` | Opens `https://fixy.ai/dashboard/code` in the browser so the user can manage their plan and billing. Requires sign-in. |
 
-Everything else (`/help`, `/quit`, history browsing) lives on the CLI layer below `@fixy` — `/quit` and Ctrl-C exit the REPL; they are not `@fixy` commands.
+`/quit` and Ctrl-C exit the REPL; they are not `@fixy` commands.
 
 ---
 
@@ -1288,3 +1297,20 @@ Expected: both the worktree and the branch are gone, `git worktree list` shows o
 - **Step 18 (TUI Polish):** Three fixes: (a) brand color changed from amber/yellow to light indigo, (b) startup header shows `@claude (model-name) · @codex (model-name)` instead of bare handles, (c) `/` and `@` typed at prompt show inline autocomplete menus (no external lib, raw ANSI). Also: filter Codex `warning: Reading additional input from stdin` stderr noise.
 - **Step 19 (Global Settings Persistence):** `~/.fixy/settings.json` stores `defaultWorker`, `collaborationMode`, `redRoomMode`, `reviewMode`, `maxDiscussionRounds`, etc. `@fixy /settings`, `@fixy /settings set <key> <value>`, `@fixy /settings reset` wired to read/write this file. Thread-level overrides possible.
 - Note: Step 19 consolidates and supersedes the earlier Step 14 draft (same feature, more complete spec).
+
+### 2026-04-13 (session 7) — Steps 22–24: fixy.ai backend integration (CLI side)
+
+- **Step 22 — Auth & Device Code Flow:** Implemented `packages/core/src/auth.ts` with full device code flow: `requestDeviceCode()`, `pollDeviceAuth()`, `runDeviceAuthFlow()`, `isAuthExpired()`. Token stored in `~/.fixy/auth.json` as `{ token, email, plan, expiresAt }`. `/login` and `/logout` commands wired in `fixy-commands.ts`.
+- **Step 23 — API Client & Server Integration:** Created `packages/core/src/api.ts` with `authedFetch()` helper (Bearer token, 401/403 handling, token expiry check). Functions: `fetchProfile()`, `registerSession()`, `heartbeat()`, `deleteSession()`, `listSessions()`, `fetchPlans()`, `fetchUsage()`. All exported from `@fixy/core`.
+- **Step 24 — Session Management & Plan Enforcement:**
+  - `/new` — anonymous users: free plan limit (3 threads) enforced locally. Signed-in users: server enforces via `POST /api/code/sessions` (returns 403 `SESSION_LIMIT_REACHED`). Plan limits: Free=3, Pro=unlimited, Team=unlimited, Business=unlimited.
+  - `/threads` — lists all threads for current project with message count, date, current marker. Supports `/threads <id>` to switch.
+  - `/account` — shows plan, sessions, limits, subscription from server via `GET /api/code/me`.
+  - `/upgrade` — opens `https://fixy.ai/dashboard/code` in browser.
+  - Startup: fire-and-forget session registration, non-blocking plan sync from server, token expiry check.
+  - REPL: 5-minute heartbeat interval via `PUT /api/code/sessions/:id/activity`.
+- First-run onboarding updated: Step 1 offers Free vs Sign In choice with device code flow.
+- Startup panel shows account info (email + plan) or "free · /login to sign in".
+- Backend integration plan created at `fixy` project: `IMPLEMENTATION-PLAN-INTEGRATION-FIXYCODE.md` — defines all `/api/code/*` endpoints, database tables (`code_subscriptions`, `code_sessions`, `code_usage`), Stripe configuration, frontend pages (`/code`, `/code/verify`, `/dashboard/code`).
+- All 392 tests pass. Typecheck and build clean across all 6 packages.
+- Published as v0.0.31.
