@@ -9,6 +9,14 @@ import type {
 import { loadSettings, loadAuth, heartbeat } from '@fixy/core';
 import { PROMPT, createSpinner } from './format.js';
 
+// ── ANSI color constants for output styling ──
+const OUT_RESET = '\x1b[0m';
+const OUT_DIM = '\x1b[2m';           // dim gray — agent speech
+const OUT_CODE = '\x1b[37m';         // bright white — code
+const OUT_CODE_FENCE = '\x1b[2;36m'; // dim cyan — ``` markers
+const OUT_HEADING = '\x1b[1;37m';    // bold white — headings
+const OUT_STDERR = '\x1b[2;31m';     // dim red — stderr
+
 /** Strip markdown bold/italic markers from terminal output. */
 function stripMarkdown(text: string): string {
   return text
@@ -16,6 +24,54 @@ function stripMarkdown(text: string): string {
     .replace(/\*\*(.+?)\*\*/gs, '$1')
     .replace(/\*([^*\n]+?)\*/gs, '$1')
     .replace(/^#{1,6}\s+/gm, '');
+}
+
+/**
+ * Colorize streamed output: code blocks bright, text dim, stderr red.
+ * Tracks code-fence state across calls via the returned object.
+ */
+function createColorizer(): {
+  colorize: (stream: 'stdout' | 'stderr', chunk: string) => string;
+} {
+  let inCodeBlock = false;
+
+  return {
+    colorize(stream: 'stdout' | 'stderr', chunk: string): string {
+      if (stream === 'stderr') {
+        return `${OUT_STDERR}${stripMarkdown(chunk)}${OUT_RESET}`;
+      }
+
+      const lines = chunk.split('\n');
+      const colored: string[] = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? '';
+
+        // Detect code fence toggles
+        if (line.trimStart().startsWith('```')) {
+          inCodeBlock = !inCodeBlock;
+          colored.push(`${OUT_CODE_FENCE}${line}${OUT_RESET}`);
+          continue;
+        }
+
+        if (inCodeBlock) {
+          // Code — bright white
+          colored.push(`${OUT_CODE}${line}${OUT_RESET}`);
+        } else {
+          // Headings — bold white
+          const stripped = stripMarkdown(line);
+          if (/^#{1,6}\s/.test(line)) {
+            colored.push(`${OUT_HEADING}${stripped}${OUT_RESET}`);
+          } else {
+            // Regular text — dim gray
+            colored.push(`${OUT_DIM}${stripped}${OUT_RESET}`);
+          }
+        }
+      }
+
+      return colored.join('\n');
+    },
+  };
 }
 
 export interface ReplParams {
@@ -333,6 +389,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     turnAbort = new AbortController();
     turnActive = true;
     spinner = createSpinner();
+    const colorizer = createColorizer();
 
     try {
       thread = await store.getThread(thread.id, thread.projectRoot);
@@ -357,7 +414,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
             process.stdout.write(`\x1b[38;5;105m@${agentId ?? ''}\x1b[0m\n`);
             headerPrinted = true;
           }
-          process.stdout.write(stripMarkdown(chunk));
+          process.stdout.write(colorizer.colorize(_stream, chunk));
         },
         signal: turnAbort.signal,
         worktreeManager,
