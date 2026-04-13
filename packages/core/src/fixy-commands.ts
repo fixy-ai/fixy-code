@@ -99,6 +99,11 @@ export class FixyCommandRunner {
 
     await this._persistThread(fresh);
     ctx.thread.workerModel = adapterId;
+
+    // Persist as global default so next session starts with this worker
+    const settings = await loadSettings();
+    settings.defaultWorker = adapterId;
+    await saveSettings(settings);
   }
 
   private async _handleAll(prompt: string, ctx: FixyCommandContext): Promise<void> {
