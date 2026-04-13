@@ -31,7 +31,7 @@ if [[ "$1" == "exec" ]]; then
   # Emit noise to stderr (should be filtered)
   echo "2026-04-12T11:46:37.355150Z ERROR codex_core::skills::loader: failed to stat skills entry" >&2
 
-  echo '{"type":"thread.started","thread_id":"'"\$THREAD_ID"'"}'
+  echo '{"type":"thread.started","thread_id":"'"$THREAD_ID"'"}'
   echo '{"type":"turn.started"}'
   echo '{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Mock codex response."}}'
   echo '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":10}}'

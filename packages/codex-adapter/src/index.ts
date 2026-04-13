@@ -86,7 +86,7 @@ class CodexAdapter implements FixyAdapter {
       const modelMatch = /^model\s*=\s*"([^"]+)"/m.exec(raw);
       const effortMatch = /^model_reasoning_effort\s*=\s*"([^"]+)"/m.exec(raw);
       if (modelMatch) {
-        const model = modelMatch[1]!;
+        const model = modelMatch[1] ?? '';
         const effort = effortMatch ? ` ${effortMatch[1]}` : '';
         return `${model}${effort}`;
       }
@@ -145,7 +145,7 @@ class CodexAdapter implements FixyAdapter {
       const raw = await fs.readFile(configPath, 'utf8');
       const modelMatch = /^model\s*=\s*"([^"]+)"/m.exec(raw);
       if (modelMatch) {
-        const currentModel = modelMatch[1]!;
+        const currentModel = modelMatch[1] ?? '';
         if (!models.some((m) => m.id === currentModel)) {
           models = [{ id: currentModel }, ...models];
         }

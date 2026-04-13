@@ -231,7 +231,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
     // Parse model ids from numbered list in the message
     const modelMatches = [...msgContent.matchAll(/\[(\d+)\]\s+([\w.-]+)/g)];
-    const modelIds = modelMatches.map((m) => m[2]!);
+    const modelIds = modelMatches.map((m) => m[2] ?? '');
     const range = modelIds.length > 0 ? `1-${modelIds.length}` : 'model';
     const prompt = modelIds.length > 0
       ? `\x1b[38;5;105m[${range}]>\x1b[0m `
@@ -247,7 +247,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const n = parseInt(choice, 10);
       const resolvedModel =
         modelIds.length > 0 && n >= 1 && n <= modelIds.length
-          ? modelIds[n - 1]!
+          ? modelIds[n - 1] ?? choice
           : choice;
 
       // Ask save preference
@@ -261,7 +261,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   const resolveAdapterToggle = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
     const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
-    const adapters = matches.map((m) => m[2]!);
+    const adapters = matches.map((m) => m[2] ?? '');
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {
@@ -275,7 +275,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   const resolveWorkerChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
     const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
-    const adapters = matches.map((m) => m[2]!);
+    const adapters = matches.map((m) => m[2] ?? '');
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {

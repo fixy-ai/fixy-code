@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, defaultSettings, settingsPath, runDeviceAuthFlow, loadAuth, saveAuth, isAuthExpired, clearAuth, fetchProfile, registerSession } from '@fixy/core';
+import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, settingsPath, runDeviceAuthFlow, loadAuth, saveAuth, isAuthExpired, clearAuth, fetchProfile, registerSession } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
 import { createCodexAdapter } from '@fixy/codex-adapter';
 import { createGeminiAdapter } from '@fixy/gemini-adapter';
@@ -84,7 +84,7 @@ async function checkForUpdate(localVersion: string): Promise<void> {
       // Destroy stdin to clean up event listeners before spawning child process
       process.stdin.destroy();
       // Re-launch the updated binary; pass --skip-update-check so the fresh process skips the update check.
-      spawnSync(process.argv[1]!, ['--skip-update-check', ...process.argv.slice(2)], {
+      spawnSync(process.argv[1] ?? 'fixy', ['--skip-update-check', ...process.argv.slice(2)], {
         stdio: 'inherit',
         cwd: process.cwd(),
       });
@@ -180,7 +180,8 @@ async function runOnboarding(registry: AdapterRegistry): Promise<void> {
     `\n${INDIGO}Choose default worker [1-${adapterList.length}]:${RESET} `,
     adapterList.length,
   );
-  const chosenAdapter = adapterList[workerIdx - 1]!;
+  const chosenAdapter = adapterList[workerIdx - 1];
+  if (!chosenAdapter) throw new Error(`Invalid worker selection: ${workerIdx}`);
   const chosenWorker = chosenAdapter.id;
 
   // Step 3 — model for the chosen worker
@@ -198,7 +199,7 @@ async function runOnboarding(registry: AdapterRegistry): Promise<void> {
         `\n${INDIGO}Choose model [1-${modelList.length}]:${RESET} `,
         modelList.length,
       );
-      chosenModel = modelList[modelIdx - 1]!.id;
+      chosenModel = modelList[modelIdx - 1]?.id ?? '';
     }
   }
 

@@ -59,6 +59,7 @@ export function startupPanel(
       : `${DIM}Account: free · /login to sign in${RESET}`,
   ];
 
+  // eslint-disable-next-line no-control-regex
   const visibleLen = (s: string): number => s.replace(/\x1b\[[0-9;]*m/g, '').length;
 
   const padLine = (line: string): string => {
