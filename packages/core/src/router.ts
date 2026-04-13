@@ -30,6 +30,12 @@ export class Router {
         return { kind: 'fixy', rest: remaining.slice(match[0].length).trimStart() };
       }
 
+      // @all → route to collaboration engine
+      if (tokens.length === 0 && match[1] === 'all') {
+        const body = remaining.slice(match[0].length).trimStart();
+        return { kind: 'fixy', rest: `/all ${body}`.trimEnd() };
+      }
+
       tokens.push(match[1]);
       remaining = remaining.slice(match[0].length).trimStart();
     }

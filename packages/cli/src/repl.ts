@@ -35,19 +35,21 @@ const MENU_DIM = '\x1b[2m';
 const MENU_RESET = '\x1b[0m';
 
 const SLASH_MENU: Array<{ name: string; desc: string }> = [
-  { name: '/all',      desc: 'run collaboration engine on all agents' },
-  { name: '/worker',   desc: 'set the worker adapter for this thread' },
-  { name: '/model',    desc: 'view or change adapter models' },
-  { name: '/new',      desc: 'create a new terminal session' },
-  { name: '/threads',  desc: 'list and switch between sessions' },
-  { name: '/login',    desc: 'sign in to fixy.ai for more features' },
-  { name: '/logout',   desc: 'sign out from fixy.ai' },
-  { name: '/settings', desc: 'view or update global settings' },
-  { name: '/reset',    desc: 'abort current turn and reset agent sessions' },
-  { name: '/status',   desc: 'show adapter and session status' },
+  { name: '/all',      desc: 'run collaboration engine on all agents (/a)' },
+  { name: '/worker',   desc: 'set the worker adapter (/w)' },
+  { name: '/model',    desc: 'view or change adapter models (/m)' },
+  { name: '/new',      desc: 'create a new session (/n)' },
+  { name: '/threads',  desc: 'list & switch sessions (/t)' },
+  { name: '/help',     desc: 'show all commands & usage (/h)' },
+  { name: '/status',   desc: 'show adapter status (/st)' },
   { name: '/account',  desc: 'view account, plan & usage' },
   { name: '/upgrade',  desc: 'open plan management in browser' },
+  { name: '/login',    desc: 'sign in to fixy.ai' },
+  { name: '/logout',   desc: 'sign out from fixy.ai' },
+  { name: '/settings', desc: 'view or update global settings' },
   { name: '/red-room', desc: 'toggle adversarial mode on/off' },
+  { name: '/compact',  desc: 'reset adapter session' },
+  { name: '/reset',    desc: 'abort current turn and reset all sessions' },
   { name: '/quit',     desc: 'exit fixy' },
 ];
 
@@ -66,6 +68,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
   const allCompletions: string[] = [
     ...SLASH_MENU.map((m) => m.name),
     ...enabledAdapters.map((a) => `@${a.id}`),
+    '@all',
     '@fixy',
   ];
 
@@ -89,6 +92,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
         name: `@${a.id}`,
         desc: `${a.name}${models[a.id] ? ` (${models[a.id]})` : ''}`,
       })),
+      { name: '@all', desc: 'All agents collaborate' },
       { name: '@fixy', desc: 'Fixy worker / commands' },
     ];
 
@@ -195,8 +199,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   const ask = (): Promise<string | null> =>
     new Promise((resolve) => {
-      rl.question(PROMPT, (answer) => resolve(answer));
-      rl.once('close', () => resolve(null));
+      const onClose = (): void => resolve(null);
+      rl.once('close', onClose);
+      rl.question(PROMPT, (answer) => {
+        rl.removeListener('close', onClose);
+        resolve(answer);
+      });
     });
 
   const askChoice = (promptText: string, signal?: AbortSignal): Promise<string | null> =>
@@ -207,6 +215,8 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const settle = (val: string | null): void => {
         if (settled) return;
         settled = true;
+        rl.removeListener('close', onClose);
+        signal?.removeEventListener('abort', onAbort);
         resolve(val);
       };
 
@@ -215,11 +225,11 @@ export async function startRepl(params: ReplParams): Promise<void> {
         rl.write('\n');
         settle(null);
       };
+      const onClose = (): void => settle(null);
 
       signal?.addEventListener('abort', onAbort, { once: true });
-      rl.once('close', () => settle(null));
+      rl.once('close', onClose);
       rl.question(promptText, (answer) => {
-        signal?.removeEventListener('abort', onAbort);
         settle(answer.trim());
       });
     });
@@ -304,6 +314,21 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
+  const resolveThreadChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+    // Parse thread ids from numbered list: [1] abcdef12… <full-id>
+    const matches = [...msgContent.matchAll(/\[(\d+)\]\s+\w+…\s+([\w-]+)/g)];
+    const threadIds = matches.map((m) => m[2] ?? '');
+    if (threadIds.length === 0) return null;
+    const range = `1-${threadIds.length}`;
+    while (true) {
+      const choice = await askChoice(`\x1b[38;5;105m[${range}] or Enter to dismiss>\x1b[0m `, signal);
+      if (choice === null || choice === '') return null;
+      const n = parseInt(choice, 10);
+      if (n >= 1 && n <= threadIds.length) return threadIds[n - 1] ?? null;
+      process.stdout.write(`Please type a number between ${range} or press Enter\n`);
+    }
+  };
+
   const runTurn = async (input: string): Promise<void> => {
     turnAbort = new AbortController();
     turnActive = true;
@@ -343,7 +368,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {
         // For interactive protocol messages, strip the first line (protocol keyword) before display.
-        const PROTOCOL_PREFIXES = ['WORKER_SELECT', 'MODEL_SELECT', 'ADAPTER_TOGGLE_SELECT'];
+        const PROTOCOL_PREFIXES = ['WORKER_SELECT', 'MODEL_SELECT', 'ADAPTER_TOGGLE_SELECT', 'THREAD_SELECT', 'THREAD_SWITCH', 'HELP'];
         const displayContent = PROTOCOL_PREFIXES.some((p) => lastMsg.content.startsWith(p))
           ? lastMsg.content.split('\n').slice(1).join('\n')
           : lastMsg.content;
@@ -386,6 +411,15 @@ export async function startRepl(params: ReplParams): Promise<void> {
             if (adapterId) {
               await runTurn(`@fixy /model @${adapterId}`);
             }
+            return;
+          }
+        }
+
+        if (lastMsg.content.startsWith('THREAD_SELECT')) {
+          const threadId = await resolveThreadChoice(lastMsg.content, interactiveSignal);
+          if (threadId !== null) {
+            thread = await store.getThread(threadId, thread.projectRoot);
+            process.stdout.write(`\x1b[38;5;105m✓\x1b[0m Switched to session ${threadId.slice(0, 8)}…\n`);
             return;
           }
         }

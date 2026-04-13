@@ -39,9 +39,11 @@ export class FixyCommandRunner {
 
     switch (command) {
       case '/worker':
+      case '/w':
         await this._handleWorker(args, ctx);
         break;
       case '/all':
+      case '/a':
         await this._handleAll(args, ctx);
         break;
       case '/settings':
@@ -51,6 +53,7 @@ export class FixyCommandRunner {
         await this._handleReset(ctx);
         break;
       case '/status':
+      case '/st':
         await this._handleStatus(ctx);
         break;
       case '/compact':
@@ -63,6 +66,7 @@ export class FixyCommandRunner {
         await this._handleSet(args, ctx);
         break;
       case '/model':
+      case '/m':
         await this._handleModel(args, ctx);
         break;
       case '/login':
@@ -72,10 +76,16 @@ export class FixyCommandRunner {
         await this._handleLogout(ctx);
         break;
       case '/new':
+      case '/n':
         await this._handleNew(ctx);
         break;
       case '/threads':
+      case '/t':
         await this._handleThreads(args, ctx);
+        break;
+      case '/help':
+      case '/h':
+        await this._handleHelp(ctx);
         break;
       case '/account':
         await this._handleAccount(ctx);
@@ -927,6 +937,47 @@ export class FixyCommandRunner {
     }
   }
 
+  private async _handleHelp(ctx: FixyCommandContext): Promise<void> {
+    const adapters = ctx.registry.list();
+    const agentList = adapters.map((a) => `@${a.id}`).join(', ');
+    const lines = [
+      'HELP',
+      '',
+      '  Agents:    ' + agentList + ', @all',
+      '',
+      '  Usage:',
+      '    @claude <message>      Send to Claude',
+      '    @codex <message>       Send to Codex',
+      '    @gemini <message>      Send to Gemini',
+      '    @all <message>         All agents collaborate',
+      '    <message>              Send to last-used agent',
+      '',
+      '  Commands (short):',
+      '    /all (/a)              Run collaboration engine',
+      '    /worker (/w)           Set default worker',
+      '    /model (/m)            View or change models',
+      '    /new (/n)              Create new session',
+      '    /threads (/t)          List & switch sessions',
+      '    /status (/st)          Show adapter status',
+      '    /help (/h)             Show this help',
+      '    /account               View account & plan',
+      '    /upgrade               Open plan management',
+      '    /login                 Sign in to fixy.ai',
+      '    /logout                Sign out',
+      '    /settings              View/update settings',
+      '    /red-room              Toggle adversarial mode',
+      '    /compact               Reset adapter session',
+      '    /reset                 Reset all sessions',
+      '    /quit                  Exit fixy',
+      '',
+      '  Tips:',
+      '    Tab                    Autocomplete commands & agents',
+      '    ESC                    Cancel current turn',
+      '    Ctrl-C                 Cancel turn or quit',
+    ];
+    await this._appendSystemMessage(lines.join('\n'), ctx);
+  }
+
   private async _handleAccount(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
     if (!auth) {
@@ -1005,17 +1056,17 @@ export class FixyCommandRunner {
       return;
     }
 
-    // List all threads
-    const lines = ['THREAD_LIST', 'Your sessions:'];
+    // List all threads with interactive selection
+    const lines = ['THREAD_SELECT', 'Your sessions:'];
     for (let i = 0; i < threads.length; i++) {
       const t = threads[i];
       if (!t) continue;
       const current = t.id === ctx.thread.id ? ' (current)' : '';
       const date = new Date(t.updatedAt).toLocaleDateString();
       const msgs = t.messages.length;
-      lines.push(`  [${i + 1}] ${t.id.slice(0, 8)}… — ${msgs} messages — ${date}${current}`);
+      lines.push(`  [${i + 1}] ${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`);
     }
-    lines.push('', 'Switch with: fixy --thread <id>');
+    lines.push('', 'Choose a number to switch, or Enter to dismiss');
     await this._appendSystemMessage(lines.join('\n'), ctx);
   }
 
