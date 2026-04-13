@@ -81,8 +81,8 @@ async function checkForUpdate(localVersion: string): Promise<void> {
     try {
       execSync('npm install -g @fixy/code --registry https://registry.npmjs.org', { stdio: 'inherit' });
       process.stdout.write(`${INDIGO}  ✓  Updated to v${remoteVersion} — Fixy is restarting…${RESET}\n`);
-      // Re-launch the updated binary in place of this process
-      spawnSync(process.argv[1]!, process.argv.slice(2), {
+      // Re-launch the updated binary; pass --skip-update-check so the fresh process skips the update check.
+      spawnSync(process.argv[1]!, ['--skip-update-check', ...process.argv.slice(2)], {
         stdio: 'inherit',
         cwd: process.cwd(),
       });
@@ -204,10 +204,13 @@ async function main(): Promise<void> {
   const projectRoot: string = gitRoot;
 
   let threadId: string | undefined;
+  let skipUpdateCheck = false;
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--thread' && args[i + 1]) {
       threadId = args[++i];
+    } else if (args[i] === '--skip-update-check') {
+      skipUpdateCheck = true;
     }
   }
 
@@ -249,7 +252,7 @@ async function main(): Promise<void> {
   const currentWorker = thread.workerModel ?? settings.defaultWorker;
 
   // Start update check early so the network request runs while we render the panel.
-  const updateCheck = checkForUpdate(version);
+  const updateCheck = skipUpdateCheck ? Promise.resolve() : checkForUpdate(version);
 
   if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');
 
