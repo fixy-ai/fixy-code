@@ -759,7 +759,7 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ### Step 15 — `/compact` Command (Manual Context Compaction)
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE
 
 **Goal:** Let the user manually compact the current thread's history into a short summary when the conversation gets long. Never automatic — always user-triggered. Never destructive — full history stays on disk untouched.
 
@@ -958,7 +958,7 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 
 ### Step 20 — Per-Adapter Extra Args (Provider Passthrough)
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE
 
 **Goal:** Let users pass any provider CLI flags directly through Fixy without Fixy needing to know what they mean. User uses the provider's own flag names. Fixy just appends them. Zero maintenance as providers add new flags.
 
