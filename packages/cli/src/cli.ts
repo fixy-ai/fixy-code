@@ -90,42 +90,102 @@ async function checkForUpdate(localVersion: string): Promise<void> {
   }
 }
 
-async function runOnboarding(adapterIds: string[]): Promise<string> {
+async function runOnboarding(registry: AdapterRegistry): Promise<void> {
   const INDIGO = '\x1b[38;5;105m';
   const DIM = '\x1b[2m';
   const BOLD = '\x1b[1m';
   const RESET = '\x1b[0m';
 
   process.stdout.write(`\n${BOLD}${INDIGO}Welcome to Fixy!${RESET}\n\n`);
-  process.stdout.write(
-    `${DIM}A ${RESET}${BOLD}worker${RESET}${DIM} is your default AI agent — the one that responds\n` +
-    `when you type a message without an @mention. You can change\n` +
-    `it any time with: @fixy /worker <agent>${RESET}\n\n`,
-  );
-  process.stdout.write(`${INDIGO}Available agents:${RESET}\n`);
-  adapterIds.forEach((id, i) => {
-    process.stdout.write(`  ${INDIGO}${i + 1}${RESET}  @${id}\n`);
-  });
-  process.stdout.write(`\n`);
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const chosen = await new Promise<string>((resolve) => {
-    const ask = (): void => {
-      rl.question(`${INDIGO}Choose default worker [1-${adapterIds.length}]:${RESET} `, (ans) => {
-        const n = parseInt(ans.trim(), 10);
-        if (n >= 1 && n <= adapterIds.length) {
-          rl.close();
-          resolve(adapterIds[n - 1]!);
-        } else {
-          ask();
-        }
-      });
-    };
-    ask();
-  });
 
-  process.stdout.write(`\n${INDIGO}✓${RESET}  Worker set to @${chosen}. All set!\n\n`);
-  return chosen;
+  const askNumber = (prompt: string, max: number): Promise<number> =>
+    new Promise((resolve) => {
+      const ask = (): void => {
+        rl.question(prompt, (ans) => {
+          const n = parseInt(ans.trim(), 10);
+          if (n >= 1 && n <= max) resolve(n);
+          else ask();
+        });
+      };
+      ask();
+    });
+
+  const askYN = (prompt: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      const ask = (): void => {
+        rl.question(prompt, (ans) => {
+          const v = ans.trim().toLowerCase();
+          if (v === 'y') resolve(true);
+          else if (v === 'n') resolve(false);
+          else ask();
+        });
+      };
+      ask();
+    });
+
+  // Step 1 — Claude permissions
+  process.stdout.write(`${BOLD}Step 1 — Claude permissions${RESET}\n`);
+  process.stdout.write(
+    `${DIM}By default, Claude asks for your approval before making file changes.\n` +
+    `You can turn this off so Claude works without interruptions.\n` +
+    `You can always change this later with: @fixy /settings set claudeArgs${RESET}\n\n`,
+  );
+  const skipPerms = await askYN(`${INDIGO}Let Claude work without asking for approval each time? (y/n):${RESET} `);
+
+  // Step 2 — default worker
+  const adapterList = registry.list();
+  process.stdout.write(`\n${BOLD}Step 2 — Default worker${RESET}\n`);
+  process.stdout.write(
+    `${DIM}Your worker is the AI agent that responds when you type a message\n` +
+    `without an @mention. You can change it any time with: @fixy /worker <agent>${RESET}\n\n`,
+  );
+  process.stdout.write(`${INDIGO}Available agents:${RESET}\n`);
+  adapterList.forEach((a, i) => {
+    process.stdout.write(`  ${INDIGO}${i + 1}${RESET}  @${a.id}\n`);
+  });
+  const workerIdx = await askNumber(
+    `\n${INDIGO}Choose default worker [1-${adapterList.length}]:${RESET} `,
+    adapterList.length,
+  );
+  const chosenAdapter = adapterList[workerIdx - 1]!;
+  const chosenWorker = chosenAdapter.id;
+
+  // Step 3 — model for the chosen worker
+  let chosenModel = '';
+  if (typeof chosenAdapter.listModels === 'function') {
+    const modelList = await chosenAdapter.listModels();
+    if (modelList.length > 0) {
+      process.stdout.write(`\n${BOLD}Step 3 — ${chosenAdapter.name} model${RESET}\n`);
+      process.stdout.write(`${DIM}Which model should @${chosenWorker} use?${RESET}\n\n`);
+      modelList.forEach((m, i) => {
+        const desc = m.description ? `  ${DIM}${m.description}${RESET}` : '';
+        process.stdout.write(`  ${INDIGO}${i + 1}${RESET}  ${m.id}${desc}\n`);
+      });
+      const modelIdx = await askNumber(
+        `\n${INDIGO}Choose model [1-${modelList.length}]:${RESET} `,
+        modelList.length,
+      );
+      chosenModel = modelList[modelIdx - 1]!.id;
+    }
+  }
+
+  rl.close();
+
+  const settings = await loadSettings();
+  settings.defaultWorker = chosenWorker;
+  if (skipPerms) settings.claudeArgs = '--dangerously-skip-permissions';
+  if (chosenModel) {
+    if (chosenWorker === 'claude') settings.claudeModel = chosenModel;
+    else if (chosenWorker === 'codex') settings.codexModel = chosenModel;
+    else if (chosenWorker === 'gemini') settings.geminiModel = chosenModel;
+  }
+  await saveSettings(settings);
+
+  process.stdout.write(
+    `\n${INDIGO}✓${RESET}  All set! Worker: @${chosenWorker}${chosenModel ? ` (${chosenModel})` : ''}\n\n`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -171,10 +231,7 @@ async function main(): Promise<void> {
   // First-run onboarding: show wizard if settings.json doesn't exist yet.
   const isFirstRun = !existsSync(settingsPath());
   if (isFirstRun) {
-    const chosenWorker = await runOnboarding(registry.list().map((a) => a.id));
-    const settings = await loadSettings();
-    settings.defaultWorker = chosenWorker;
-    await saveSettings(settings);
+    await runOnboarding(registry);
   }
 
   const settings = await loadSettings();

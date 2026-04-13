@@ -50,7 +50,7 @@ export function startupPanel(
   const contentLines: string[] = [
     `${BOLD}${FIXY_COLOR}Fixy v${version}${RESET}`,
     `${DIM}agents: ${agentDisplay}${RESET}`,
-    `${DIM}worker: @${worker}${RESET}`,
+    `${DIM}worker: @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
     `${DIM}directory: ${dirDisplay}${RESET}`,
     `${DIM}thread: ${threadId}${RESET}`,
   ];
