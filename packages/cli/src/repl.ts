@@ -259,7 +259,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {
-        process.stdout.write(`\n${lastMsg.content}\n`);
+        // For interactive protocol messages, strip the first line (protocol keyword) before display.
+        const PROTOCOL_PREFIXES = ['WORKER_SELECT', 'MODEL_SELECT'];
+        const displayContent = PROTOCOL_PREFIXES.some((p) => lastMsg.content.startsWith(p))
+          ? lastMsg.content.split('\n').slice(1).join('\n')
+          : lastMsg.content;
+        process.stdout.write(`\n${displayContent}\n`);
 
         if (lastMsg.content.startsWith('AGENTS DISAGREE')) {
           const choiceInput = await resolveDisagreementChoice(lastMsg.content);
