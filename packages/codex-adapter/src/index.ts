@@ -1,5 +1,9 @@
 // packages/codex-adapter/src/index.ts
 
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import type {
   FixyAdapter,
   FixyProbeResult,
@@ -74,21 +78,19 @@ class CodexAdapter implements FixyAdapter {
   }
 
   async getActiveModel(): Promise<string | null> {
+    // Read model from ~/.codex/config.toml (e.g. model = "gpt-5.4")
     try {
-      const cmd = await resolveCommand('codex');
-      const result = await runChildProcess({
-        command: cmd,
-        args: ['--version'],
-        cwd: process.cwd(),
-        env: buildInheritedEnv(),
-        timeoutMs: 5_000,
-      });
-      const output = (result.stdout + result.stderr).trim();
-      // Match patterns like "gpt-4o", "gpt-4.5", "gpt-5.4 xhigh", "gpt-4o-mini"
-      const match = /gpt-[0-9]+(?:\.[0-9]+)?(?:[a-z0-9-]*)(?:\s+[a-z]+)?/.exec(output);
-      if (match) return match[0].trim();
+      const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+      const raw = await fs.readFile(configPath, 'utf8');
+      const modelMatch = /^model\s*=\s*"([^"]+)"/m.exec(raw);
+      const effortMatch = /^model_reasoning_effort\s*=\s*"([^"]+)"/m.exec(raw);
+      if (modelMatch) {
+        const model = modelMatch[1]!;
+        const effort = effortMatch ? ` ${effortMatch[1]}` : '';
+        return `${model}${effort}`;
+      }
     } catch {
-      // Ignore
+      // Config not found — fall through
     }
     return null;
   }

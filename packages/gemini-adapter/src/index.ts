@@ -83,9 +83,12 @@ class GeminiAdapter implements FixyAdapter {
         timeoutMs: 5_000,
       });
       const output = (result.stdout + result.stderr).trim();
-      // Match patterns like "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-pro", etc.
-      const matched = output.match(/gemini-[0-9]+(?:\.[0-9]+)?(?:-[a-z0-9]+)*/);
-      if (matched) return matched[0].trim();
+      // Try to match a gemini model name pattern first
+      const modelMatch = output.match(/gemini-[0-9]+(?:\.[0-9]+)?(?:-[a-z0-9]+)*/);
+      if (modelMatch) return modelMatch[0].trim();
+      // Fall back to version string (e.g. "0.17.1")
+      const versionMatch = output.match(/[0-9]+\.[0-9]+\.[0-9]+/);
+      if (versionMatch) return `v${versionMatch[0]}`;
     } catch {
       // Ignore — model name is best-effort
     }
