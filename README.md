@@ -32,6 +32,12 @@ Fixy Code never stores your code, your prompts, or your credentials. Everything 
 
 ---
 
+## No login required
+
+If you're already logged into Claude Code, Codex CLI, or Gemini CLI — Fixy works immediately. No API keys to configure, no extra accounts to create, no AI provider setup. Fixy uses your existing sessions as-is.
+
+---
+
 ## Requirements
 
 Before installing Fixy Code, make sure you have at least one of these installed and authenticated:
