@@ -75,7 +75,7 @@ Fixy checks for updates automatically every time you start it. If a new version 
   ℹ  Fixy v0.0.8 Available — Update Now? (Y/n)
 ```
 
-Press `y` to update in one click. Press `n` to skip and continue.
+Press `y` to update and restart automatically. Press `n` to skip and continue.
 
 To update manually:
 

@@ -76,13 +76,18 @@ async function checkForUpdate(localVersion: string): Promise<void> {
     if (answer !== 'y') return;
 
     process.stdout.write(`${DIM}  updating…${RESET}\n`);
-    // Safe: command is a hardcoded literal, no user input involved
-    const { execSync } = await import('node:child_process');
+    // Safe: commands are hardcoded literals, no user input involved
+    const { execSync, spawnSync } = await import('node:child_process');
     try {
       execSync('npm install -g @fixy/code --registry https://registry.npmjs.org', { stdio: 'inherit' });
-      process.stdout.write(`${INDIGO}  ✓  updated to v${remoteVersion} — restart fixy${RESET}\n`);
+      process.stdout.write(`${INDIGO}  ✓  Updated to v${remoteVersion} — Fixy is restarting…${RESET}\n`);
+      // Re-launch the updated binary in place of this process
+      spawnSync(process.argv[1]!, process.argv.slice(2), {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+      });
     } catch {
-      process.stdout.write(`\x1b[31m  ✗  update failed — run: npm install -g @fixy/code${RESET}\n`);
+      process.stdout.write(`\x1b[31m  ✗  Update failed — run: npm install -g @fixy/code${RESET}\n`);
     }
     process.exit(0);
   } catch {
