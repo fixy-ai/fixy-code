@@ -67,7 +67,9 @@ export function startupPanel(
   const top = `${FIXY_COLOR}╭${'─'.repeat(innerWidth)}╮${RESET}`;
   const bottom = `${FIXY_COLOR}╰${'─'.repeat(innerWidth)}╯${RESET}`;
 
-  return [top, ...contentLines.map(padLine), bottom].join('\n');
+  const hints = `${DIM}  @ mention agents · / commands · Tab complete · ESC cancel · Ctrl-C quit${RESET}`;
+
+  return [top, ...contentLines.map(padLine), bottom, hints].join('\n');
 }
 
 export function createSpinner(): { start(label: string): void; stop(): void } {
