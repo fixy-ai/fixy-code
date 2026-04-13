@@ -902,7 +902,7 @@ export class FixyCommandRunner {
       const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
       if (threads.length >= FREE_THREAD_LIMIT) {
         await this._appendSystemMessage(
-          `Session limit reached (${threads.length}/${FREE_THREAD_LIMIT} on free plan).\nSign in with /login or upgrade at https://fixy.ai/dashboard/code\nUse /threads to view existing sessions.`,
+          `Session limit reached (${threads.length}/${FREE_THREAD_LIMIT} on free plan).\nSign in with /login or upgrade at https://fixy.ai/dashboard/code\nUse /threads (/t) to view existing sessions.`,
           ctx,
         );
         return;
@@ -933,7 +933,10 @@ export class FixyCommandRunner {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await this._appendSystemMessage(msg, ctx);
+      await this._appendSystemMessage(
+        `${msg}\nUse /threads (/t) to view existing sessions or /upgrade to change plan.`,
+        ctx,
+      );
     }
   }
 
