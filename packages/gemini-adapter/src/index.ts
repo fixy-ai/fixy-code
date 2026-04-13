@@ -102,65 +102,37 @@ class GeminiAdapter implements FixyAdapter {
       { id: 'gemini-2.0-flash', description: 'Fast and efficient' },
     ];
 
-    // 1. Try `gemini models` CLI command (safe: uses runChildProcess with array args)
-    try {
-      const cmd = await resolveCommand('gemini');
-      const result = await runChildProcess({
-        command: cmd,
-        args: ['models'],
-        cwd: process.cwd(),
-        env: buildInheritedEnv(),
-        timeoutMs: 5_000,
-      });
-      const lines = (result.stdout + '\n' + result.stderr).split('\n').map((l) => l.trim());
-      const cliModels = lines
-        .map((l) => {
-          const m = /gemini-[a-z0-9.-]+/.exec(l);
-          return m ? m[0] : null;
-        })
-        .filter((id): id is string => id !== null);
-      const unique = [...new Set(cliModels)];
-      if (unique.length > 0) {
-        return unique.map((id) => ({ id }));
-      }
-    } catch {
-      // CLI not available or failed — fall through
-    }
-
-    // 2. Try REST API
     const apiKey = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'];
-    if (apiKey) {
+    if (!apiKey) return fallback;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5_000);
+      let response: Response;
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5_000);
-        let response: Response;
-        try {
-          response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-            { signal: controller.signal },
-          );
-        } finally {
-          clearTimeout(timer);
-        }
-
-        if (response.ok) {
-          const json = (await response.json()) as {
-            models: Array<{ name: string; displayName: string; description: string }>;
-          };
-          const apiModels = (json.models ?? [])
-            .filter((m) => m.name.includes('gemini'))
-            .map((m) => ({
-              id: m.name.replace(/^models\//, ''),
-              description: m.displayName,
-            }));
-          if (apiModels.length > 0) return apiModels;
-        }
-      } catch {
-        // Fall through to fallback
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
+          { signal: controller.signal },
+        );
+      } finally {
+        clearTimeout(timer);
       }
-    }
 
-    return fallback;
+      if (!response.ok) return fallback;
+
+      const json = (await response.json()) as {
+        models: Array<{ name: string; displayName: string }>;
+      };
+      const apiModels = (json.models ?? [])
+        .filter((m) => m.name.includes('gemini'))
+        .map((m) => ({
+          id: m.name.replace(/^models\//, ''),
+          description: m.displayName,
+        }));
+      return apiModels.length > 0 ? apiModels : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
