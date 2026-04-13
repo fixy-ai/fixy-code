@@ -1,6 +1,6 @@
 {
   "name": "@fixy/codex-adapter",
-  "version": "0.0.45",
+  "version": "0.0.46",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
