@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { rename, writeFile } from 'node:fs/promises';
 
-import type { FixyExecutionContext } from './adapter.js';
+import type { FixyExecutionContext, FixyExecutionResult } from './adapter.js';
 import type { AdapterRegistry } from './registry.js';
 import { detectDisagreement } from './disagreement.js';
 import type { DisagreementResult } from './disagreement.js';
@@ -140,7 +140,7 @@ export class FixyCommandRunner {
 
   private async _handleAll(prompt: string, ctx: FixyCommandContext): Promise<void> {
     if (!prompt.trim()) {
-      await this._appendSystemMessage('/all requires a prompt — usage: @fixy /all <prompt>', ctx);
+      await this._appendSystemMessage('/all requires a prompt — usage: @all <prompt>', ctx);
       return;
     }
 
@@ -158,6 +158,19 @@ export class FixyCommandRunner {
     const log = (msg: string): void => {
       ctx.onLog('stdout', msg);
     };
+
+    // Simple task detection: short prompts without coding/task keywords → broadcast to all agents
+    const TASK_KEYWORDS = /\b(implement|refactor|build|fix|create|add|remove|delete|update|migrate|deploy|test|review|debug|optimize|change|move|rename|install|configure|setup|write|design|plan|task|feature|bug|issue|todo)\b/i;
+    const isComplexTask = prompt.length > 60 || TASK_KEYWORDS.test(prompt);
+
+    if (!isComplexTask) {
+      // Simple mode: broadcast to all agents, each responds independently
+      for (const adapter of allAdapters) {
+        log(`\n\x1b[38;5;105m── @${adapter.id} ──\x1b[0m\n`);
+        await this._callAdapterForAll(adapter, prompt, ctx);
+      }
+      return;
+    }
 
     // Helpers to call an adapter and record its response
     const callAdapter = async (
@@ -1071,6 +1084,46 @@ export class FixyCommandRunner {
     }
     lines.push('', 'Choose a number to switch, or Enter to dismiss');
     await this._appendSystemMessage(lines.join('\n'), ctx);
+  }
+
+  private async _callAdapterForAll(
+    adapter: { id: string; name: string; execute: (ctx: FixyExecutionContext) => Promise<FixyExecutionResult> },
+    prompt: string,
+    ctx: FixyCommandContext,
+  ): Promise<void> {
+    const runId = randomUUID();
+    const execCtx: FixyExecutionContext = {
+      runId,
+      agent: { id: adapter.id, name: adapter.name },
+      threadContext: {
+        threadId: ctx.thread.id,
+        projectRoot: ctx.thread.projectRoot,
+        worktreePath: ctx.thread.projectRoot,
+        repoRef: null,
+      },
+      messages: ctx.thread.messages,
+      prompt,
+      session: ctx.thread.agentSessions[adapter.id] ?? null,
+      adapterArgs: ctx.thread.adapterArgs,
+      onLog: ctx.onLog,
+      onMeta: () => {},
+      onSpawn: () => {},
+      signal: ctx.signal,
+    };
+    const result = await adapter.execute(execCtx);
+    ctx.thread.agentSessions[adapter.id] = result.session;
+    const agentMsg: FixyMessage = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      role: 'agent',
+      agentId: adapter.id,
+      content: result.summary,
+      runId,
+      dispatchedTo: [],
+      patches: result.patches,
+      warnings: result.warnings,
+    };
+    await ctx.store.appendMessage(ctx.thread.id, ctx.thread.projectRoot, agentMsg);
   }
 
   private async _handleBare(prompt: string, ctx: FixyCommandContext): Promise<void> {
