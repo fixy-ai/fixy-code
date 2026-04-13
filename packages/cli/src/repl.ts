@@ -293,10 +293,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
       break;
     }
 
-    const input = line.trim();
-    if (input.length === 0) continue;
+    // Auto-prefix any /command with @fixy so the router handles it.
+    const rawInput = line.trim();
+    if (rawInput.length === 0) continue;
+    const input = rawInput.startsWith('/') ? `@fixy ${rawInput}` : rawInput;
 
-    if (input === '/quit' || input === '/exit') {
+    if (rawInput === '/quit' || rawInput === '/exit') {
       process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       break;
     }
