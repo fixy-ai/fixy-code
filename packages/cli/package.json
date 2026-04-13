@@ -15,7 +15,8 @@
     "@fixy/core": "workspace:*",
     "@fixy/adapter-utils": "workspace:*",
     "@fixy/claude-adapter": "workspace:*",
-    "@fixy/codex-adapter": "workspace:*"
+    "@fixy/codex-adapter": "workspace:*",
+    "@fixy/gemini-adapter": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0"

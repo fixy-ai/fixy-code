@@ -1,0 +1,25 @@
+{
+  "name": "@fixy/gemini-adapter",
+  "version": "0.0.5",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fixy/adapter-utils": "workspace:*",
+    "@fixy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "license": "MIT"
+}

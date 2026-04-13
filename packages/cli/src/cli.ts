@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
 import { createCodexAdapter } from '@fixy/codex-adapter';
+import { createGeminiAdapter } from '@fixy/gemini-adapter';
 import { startupPanel } from './format.js';
 import { startRepl } from './repl.js';
 
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
 
   registry.register(createClaudeAdapter());
   registry.register(createCodexAdapter());
+  registry.register(createGeminiAdapter());
 
   // Collect active model names from each adapter (best-effort, null if unavailable).
   const adapterList = registry.list();
