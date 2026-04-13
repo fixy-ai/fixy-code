@@ -6,7 +6,17 @@ import type {
   TurnController,
   WorktreeManager,
 } from '@fixy/core';
+import { loadSettings } from '@fixy/core';
 import { PROMPT, createSpinner } from './format.js';
+
+/** Strip markdown bold/italic markers from terminal output. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/\*([^*\n]+?)\*/gs, '$1')
+    .replace(/^#{1,6}\s+/gm, '');
+}
 
 export interface ReplParams {
   thread: FixyThread;
@@ -43,9 +53,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let turnAbort: AbortController | null = null;
   let spinner: ReturnType<typeof createSpinner> | null = null;
 
+  const settings = await loadSettings();
+  const disabledAdapters = new Set(settings.disabledAdapters ?? []);
+  const enabledAdapters = registry.list().filter((a) => !disabledAdapters.has(a.id));
+
   const allCompletions: string[] = [
     ...SLASH_MENU.map((m) => m.name),
-    ...registry.list().map((a) => `@${a.id}`),
+    ...enabledAdapters.map((a) => `@${a.id}`),
     '@fixy',
   ];
 
@@ -65,7 +79,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     readline.emitKeypressEvents(process.stdin, rl);
 
     const atMenu: Array<{ name: string; desc: string }> = [
-      ...registry.list().map((a) => ({
+      ...enabledAdapters.map((a) => ({
         name: `@${a.id}`,
         desc: `${a.name}${models[a.id] ? ` (${models[a.id]})` : ''}`,
       })),
@@ -166,13 +180,32 @@ export async function startRepl(params: ReplParams): Promise<void> {
       rl.once('close', () => resolve(null));
     });
 
-  const askChoice = (promptText: string): Promise<string | null> =>
+  const askChoice = (promptText: string, signal?: AbortSignal): Promise<string | null> =>
     new Promise((resolve) => {
-      rl.question(promptText, (answer) => resolve(answer.trim()));
-      rl.once('close', () => resolve(null));
+      if (signal?.aborted) { resolve(null); return; }
+
+      let settled = false;
+      const settle = (val: string | null): void => {
+        if (settled) return;
+        settled = true;
+        resolve(val);
+      };
+
+      const onAbort = (): void => {
+        // Inject a newline to flush readline's pending question cleanly.
+        rl.write('\n');
+        settle(null);
+      };
+
+      signal?.addEventListener('abort', onAbort, { once: true });
+      rl.once('close', () => settle(null));
+      rl.question(promptText, (answer) => {
+        signal?.removeEventListener('abort', onAbort);
+        settle(answer.trim());
+      });
     });
 
-  const resolveModelChoice = async (msgContent: string): Promise<string | null> => {
+  const resolveModelChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
     // Extract adapter id from MODEL_SELECT @<id>
     const adapterMatch = msgContent.match(/^MODEL_SELECT @(\w+)/);
     const adapterId = adapterMatch?.[1] ?? thread.workerModel;
@@ -186,7 +219,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       : `\x1b[38;5;105m[model]>\x1b[0m `;
 
     while (true) {
-      const raw = await askChoice(prompt);
+      const raw = await askChoice(prompt, signal);
       if (raw === null) return null;
       const choice = raw.trim();
       if (choice.length === 0) continue;
@@ -199,7 +232,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
           : choice;
 
       // Ask save preference
-      const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ');
+      const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ', signal);
       if (saveRaw === null) return null;
       const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
 
@@ -207,13 +240,27 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
-  const resolveWorkerChoice = async (msgContent: string): Promise<string | null> => {
+  const resolveAdapterToggle = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
     const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
     const adapters = matches.map((m) => m[2]!);
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}]>\x1b[0m `);
+      const choice = await askChoice(`\x1b[38;5;105m[${range}] or Enter to dismiss>\x1b[0m `, signal);
+      if (choice === null || choice === '') return null;
+      const n = parseInt(choice, 10);
+      if (n >= 1 && n <= adapters.length) return `@fixy /model @${adapters[n - 1]} toggle`;
+      process.stdout.write(`Please type a number between ${range} or press Enter\n`);
+    }
+  };
+
+  const resolveWorkerChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+    const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
+    const adapters = matches.map((m) => m[2]!);
+    if (adapters.length === 0) return null;
+    const range = `1-${adapters.length}`;
+    while (true) {
+      const choice = await askChoice(`\x1b[38;5;105m[${range}]>\x1b[0m `, signal);
       if (choice === null) return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= adapters.length) return `@fixy /worker ${adapters[n - 1]}`;
@@ -221,14 +268,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
-  const resolveDisagreementChoice = async (msgContent: string): Promise<string | null> => {
+  const resolveDisagreementChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
     const matchA = msgContent.match(/\[1\] Go with @(\w+)/);
     const matchB = msgContent.match(/\[2\] Go with @(\w+)/);
     const agentA = matchA?.[1] ?? thread.workerModel;
     const agentB = matchB?.[1] ?? thread.workerModel;
 
     while (true) {
-      const choice = await askChoice('\x1b[38;5;105m[1/2/3]>\x1b[0m ');
+      const choice = await askChoice('\x1b[38;5;105m[1/2/3]>\x1b[0m ', signal);
       if (choice === null) return null;
       if (choice === '1') return `@fixy Go with @${agentA}'s approach`;
       if (choice === '2') return `@fixy Go with @${agentB}'s approach`;
@@ -266,7 +313,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
             process.stdout.write(`\x1b[38;5;105m@${agentId ?? ''}\x1b[0m\n`);
             headerPrinted = true;
           }
-          process.stdout.write(chunk);
+          process.stdout.write(stripMarkdown(chunk));
         },
         signal: turnAbort.signal,
         worktreeManager,
@@ -277,22 +324,34 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {
         // For interactive protocol messages, strip the first line (protocol keyword) before display.
-        const PROTOCOL_PREFIXES = ['WORKER_SELECT', 'MODEL_SELECT'];
+        const PROTOCOL_PREFIXES = ['WORKER_SELECT', 'MODEL_SELECT', 'ADAPTER_TOGGLE_SELECT'];
         const displayContent = PROTOCOL_PREFIXES.some((p) => lastMsg.content.startsWith(p))
           ? lastMsg.content.split('\n').slice(1).join('\n')
           : lastMsg.content;
         process.stdout.write(`\n${displayContent}\n`);
 
+        const interactiveSignal = turnAbort?.signal;
+
         if (lastMsg.content.startsWith('AGENTS DISAGREE')) {
-          const choiceInput = await resolveDisagreementChoice(lastMsg.content);
+          const choiceInput = await resolveDisagreementChoice(lastMsg.content, interactiveSignal);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
             return;
           }
         }
 
+        if (lastMsg.content.startsWith('ADAPTER_TOGGLE_SELECT')) {
+          const choiceInput = await resolveAdapterToggle(lastMsg.content, interactiveSignal);
+          if (choiceInput !== null) {
+            await runTurn(choiceInput);
+            // Re-show the updated provider list after toggling
+            await runTurn('@fixy /model');
+            return;
+          }
+        }
+
         if (lastMsg.content.startsWith('MODEL_SELECT')) {
-          const choiceInput = await resolveModelChoice(lastMsg.content);
+          const choiceInput = await resolveModelChoice(lastMsg.content, interactiveSignal);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
             return;
@@ -300,7 +359,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
         }
 
         if (lastMsg.content.startsWith('WORKER_SELECT')) {
-          const choiceInput = await resolveWorkerChoice(lastMsg.content);
+          const choiceInput = await resolveWorkerChoice(lastMsg.content, interactiveSignal);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
             // After setting the worker, immediately trigger model selection for it

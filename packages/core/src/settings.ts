@@ -19,6 +19,7 @@ export interface FixySettings {
   codexModel: string;
   codexEffort: string;
   geminiModel: string;
+  disabledAdapters: string[];
 }
 
 export const defaultSettings: FixySettings = {
@@ -37,6 +38,7 @@ export const defaultSettings: FixySettings = {
   codexModel: '',
   codexEffort: '',
   geminiModel: '',
+  disabledAdapters: [],
 };
 
 export async function loadSettings(): Promise<FixySettings> {

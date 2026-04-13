@@ -628,39 +628,61 @@ export class FixyCommandRunner {
       return;
     }
 
+    if (subCommand === 'toggle') {
+      await this._handleAdapterToggle(adapterId, ctx);
+      return;
+    }
+
     await this._showModelSelectionUI(adapterId, ctx);
   }
 
   private async _showModelStatus(ctx: FixyCommandContext): Promise<void> {
     const settings = await loadSettings();
     const adapters = ctx.registry.list();
-    const lines: string[] = [];
+    const disabled = settings.disabledAdapters ?? [];
+    const lines: string[] = ['ADAPTER_TOGGLE_SELECT', 'Providers (type number to toggle on/off, Enter to dismiss):'];
 
-    for (const adapter of adapters) {
+    for (let i = 0; i < adapters.length; i++) {
+      const adapter = adapters[i]!;
+      const isDisabled = disabled.includes(adapter.id);
       let currentModel: string;
       if (adapter.id === 'claude') {
-        currentModel =
-          settings.claudeModel || (await adapter.getActiveModel?.()) || 'default';
+        currentModel = settings.claudeModel || (await adapter.getActiveModel?.()) || 'default';
       } else if (adapter.id === 'codex') {
         const model = settings.codexModel;
         const effort = settings.codexEffort;
-        currentModel =
-          [model, effort].filter(Boolean).join(' ') ||
-          (await adapter.getActiveModel?.()) ||
-          'default';
+        currentModel = [model, effort].filter(Boolean).join(' ') || (await adapter.getActiveModel?.()) || 'default';
       } else if (adapter.id === 'gemini') {
-        currentModel =
-          settings.geminiModel || (await adapter.getActiveModel?.()) || 'default';
+        currentModel = settings.geminiModel || (await adapter.getActiveModel?.()) || 'default';
       } else {
         currentModel = (await adapter.getActiveModel?.()) || 'default';
       }
-
-      lines.push(
-        `@${adapter.id.padEnd(8)} current: ${currentModel}  (change: /model @${adapter.id})`,
-      );
+      const status = isDisabled ? 'disabled' : 'enabled';
+      lines.push(`  [${i + 1}] @${adapter.id.padEnd(8)} ${currentModel.padEnd(16)} ${status}`);
     }
 
+    lines.push('');
+    lines.push('To change model: /model @<agent>');
     await this._appendSystemMessage(lines.join('\n'), ctx);
+  }
+
+  private async _handleAdapterToggle(adapterId: string, ctx: FixyCommandContext): Promise<void> {
+    const adapter = ctx.registry.get(adapterId);
+    if (!adapter) {
+      await this._appendSystemMessage(`Unknown adapter: @${adapterId}`, ctx);
+      return;
+    }
+    const settings = await loadSettings();
+    const disabled = new Set(settings.disabledAdapters ?? []);
+    if (disabled.has(adapterId)) {
+      disabled.delete(adapterId);
+      await saveSettings({ ...settings, disabledAdapters: [...disabled] });
+      await this._appendSystemMessage(`@${adapterId} enabled`, ctx);
+    } else {
+      disabled.add(adapterId);
+      await saveSettings({ ...settings, disabledAdapters: [...disabled] });
+      await this._appendSystemMessage(`@${adapterId} disabled`, ctx);
+    }
   }
 
   private async _showModelSelectionUI(
