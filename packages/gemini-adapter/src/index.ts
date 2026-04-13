@@ -19,13 +19,18 @@ import { loadSettings } from '@fixy/core';
 
 import { parseGeminiOutput, parseListSessions } from './parse.js';
 
-// Gemini CLI emits a credentials notice on every invocation — suppress it.
-const GEMINI_CREDENTIALS_NOISE = 'Loaded cached credentials.';
+// Gemini CLI emits various noise on stderr/stdout — suppress it.
+const GEMINI_NOISE_PATTERNS = [
+  'Loaded cached credentials.',
+  'Skill "',
+  'is overriding the built-in skill',
+  'warning: Skill ',
+];
 
 function filterGeminiNoise(text: string): string {
   return text
     .split('\n')
-    .filter((line) => !line.includes(GEMINI_CREDENTIALS_NOISE))
+    .filter((line) => !GEMINI_NOISE_PATTERNS.some((p) => line.includes(p)))
     .join('\n')
     .trim();
 }

@@ -395,7 +395,8 @@ export async function startRepl(params: ReplParams): Promise<void> {
       thread = await store.getThread(thread.id, thread.projectRoot);
       // Show spinner only when an external agent will respond (not for @fixy commands)
       const isFixyCommand = /^@fixy\s*\//.test(input);
-      if (!isFixyCommand) {
+      const isAllCommand = /^@all\b/i.test(input) || /^@fixy\s+\/all\b/.test(input);
+      if (!isFixyCommand && !isAllCommand) {
         const mentionMatch = input.match(/^@(\w+)/);
         const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
         spinner.start(`@${targetAgent}`);
@@ -411,7 +412,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
           if (!headerPrinted && _stream === 'stdout') {
             spinner?.stop();
             spinner = null;
-            process.stdout.write(`\x1b[38;5;105m@${agentId ?? ''}\x1b[0m\n`);
+            // Skip the redundant @header for @all — it prints its own ── @agent ── separators
+            if (!isAllCommand) {
+              process.stdout.write(`\x1b[38;5;105m@${agentId ?? ''}\x1b[0m\n`);
+            }
             headerPrinted = true;
           }
           process.stdout.write(colorizer.colorize(_stream, chunk));

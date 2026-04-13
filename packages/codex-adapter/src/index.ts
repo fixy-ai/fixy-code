@@ -235,8 +235,10 @@ class CodexAdapter implements FixyAdapter {
           }
         }
       } catch {
-        // Not JSON — forward as-is (shouldn't happen with --json flag)
-        if (line.length > 0) ctx.onLog('stdout', line + '\n');
+        // Not JSON — forward as-is but filter known noise
+        if (line.length > 0 && !line.includes(CODEX_STDIN_WARNING)) {
+          ctx.onLog('stdout', line + '\n');
+        }
       }
     };
 
