@@ -26,16 +26,19 @@
 3. Wait for my approval before making changes.
 4. After completing changes, list every file you actually modified.
 
-## Autocomplete Menu Behaviour
+## After Completing Any Task
 
-The `/` and `@` autocomplete menus in `packages/cli/src/repl.ts` MUST filter as the user types:
-- `/` → show all slash commands
-- `/a` → show only commands starting with `/a` (e.g. `/all`)
-- `@` → show all agents
-- `@c` → show only agents starting with `@c` (e.g. `@claude`)
-- No match → hide menu
+ALWAYS run these steps in order after finishing any task:
 
-**NEVER** make the menu disappear as soon as the user types any character after `/` or `@`. It must stay visible and filter dynamically.
+```bash
+git add -A && git commit -m "description"
+pnpm -r exec npm version patch
+git add -A && git commit -m "chore: bump to vX.X.X"
+git push origin main
+pnpm publish -r --access public --registry https://registry.npmjs.org
+```
+
+No exceptions. Never leave work uncommitted and unpublished.
 
 ---
 
