@@ -21,7 +21,7 @@ If no type-checker is configured, state that explicitly instead of claiming succ
 
 ## Context Management
 
-5. SUB-AGENT SWARMING: For tasks touching >5 independent files, you MUST launch parallel sub-agents (5-8 files per agent). Each agent gets its own context window. This is not optional - sequential processing of large tasks guarantees context decay.
+5. SUB-AGENT SWARMING: For tasks touching >5 independent files, you MUST launch parallel Sonnet sub-agents (5-8 files per agent). Each agent gets its own context window. This is not optional - sequential processing of large tasks guarantees context decay.
 
 6. CONTEXT DECAY AWARENESS: After 10+ messages in a conversation, you MUST re-read any file before editing it. Do not trust your memory of file contents. Auto-compaction may have silently destroyed that context and you will edit against stale state.
 

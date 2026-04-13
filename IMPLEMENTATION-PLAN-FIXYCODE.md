@@ -919,7 +919,7 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 
 ### Step 18b — ESC Cancel & Agent Name Prefix
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE
 
 **Goal:** Two UX improvements discovered during live testing of Step 18.
 
@@ -938,7 +938,7 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 - `packages/cli/src/repl.ts` — ESC keypress handler + agent name prefix on first chunk
 
 **Acceptance:**
-- Pressing ESC during a running turn cancels it cleanly with `⊘ cancelled`
+- Pressing ESC during a running turn cancels it cleanly with `⊘ cancelled` in indigo
 - Pressing ESC while typing clears the line, no exit
 - Every agent response is prefixed with `@claude` / `@codex` in indigo before its text
 - All existing tests still pass
