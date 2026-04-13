@@ -231,10 +231,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
     try {
       thread = await store.getThread(thread.id, thread.projectRoot);
-      // Show which agent will respond (parse @mention, else fall back to worker)
-      const mentionMatch = input.match(/^@(\w+)/);
-      const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
-      spinner.start(`@${targetAgent}`);
+      // Show spinner only when an external agent will respond (not for @fixy commands)
+      const isFixyCommand = /^@fixy\s*\//.test(input);
+      if (!isFixyCommand) {
+        const mentionMatch = input.match(/^@(\w+)/);
+        const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
+        spinner.start(`@${targetAgent}`);
+      }
       let headerPrinted = false;
 
       await turnController.runTurn({
