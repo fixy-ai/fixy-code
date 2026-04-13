@@ -348,7 +348,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}]>\x1b[0m \x1b[2m(Enter to cancel)\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel>\x1b[0m `, signal);
       if (choice === null || choice === '') return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= adapters.length) return `@fixy /model @${adapters[n - 1]} toggle`;
@@ -394,7 +394,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (threadIds.length === 0) return null;
     const range = `1-${threadIds.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}]>\x1b[0m \x1b[2m(Enter to cancel)\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel>\x1b[0m `, signal);
       if (choice === null || choice === '') return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= threadIds.length) return threadIds[n - 1] ?? null;
