@@ -26,6 +26,23 @@
 3. Wait for my approval before making changes.
 4. After completing changes, list every file you actually modified.
 
+## Publishing to npm
+
+**NEVER mention OTP or 2FA.** The user uses Google Passkey.
+
+When publishing a new version, ALWAYS provide these exact commands in this exact order:
+
+```bash
+pnpm -r exec npm version patch
+git add -A && git commit -m "chore: bump to v0.0.X"
+git push origin main
+pnpm publish -r --access public --registry https://registry.npmjs.org
+```
+
+No variations. No alternatives. Always include all 4 commands.
+
+---
+
 ## AI Agent Session Rules
 * **Always read `IMPLEMENTATION-PLAN-FIXYCODE.md`** before starting any work. Understand what has been done and what is pending.
 * **MANDATORY: ALWAYS commit after finishing work.** Run `git add` for all modified files and `git commit` with a descriptive message at the end of every task. Never leave uncommitted changes.
