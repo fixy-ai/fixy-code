@@ -1008,7 +1008,8 @@ export class FixyCommandRunner {
     // List all threads
     const lines = ['THREAD_LIST', 'Your sessions:'];
     for (let i = 0; i < threads.length; i++) {
-      const t = threads[i]!;
+      const t = threads[i];
+      if (!t) continue;
       const current = t.id === ctx.thread.id ? ' (current)' : '';
       const date = new Date(t.updatedAt).toLocaleDateString();
       const msgs = t.messages.length;

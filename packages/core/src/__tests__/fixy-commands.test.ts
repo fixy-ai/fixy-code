@@ -157,7 +157,7 @@ describe('FixyCommandRunner', () => {
   // -------------------------------------------------------------------------
   it('/all solo mode — single adapter runs plan+execute without discussion', async () => {
     let callCount = 0;
-    const soloAdapter = createStubAdapter('claude', 'Claude', async (ctx) => {
+    const soloAdapter = createStubAdapter('claude', 'Claude', async (_ctx) => {
       callCount++;
       // First call: plan breakdown → return numbered list
       if (callCount === 1) {

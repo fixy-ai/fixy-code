@@ -160,13 +160,7 @@ describe('/settings command', () => {
   it('/settings set invalid key is rejected without writing', async () => {
     // Ensure file doesn't exist yet
     const pathBefore = settingsPath();
-    let existsBefore = false;
-    try {
-      await readFile(pathBefore, 'utf8');
-      existsBefore = true;
-    } catch {
-      existsBefore = false;
-    }
+    const existsBefore = await readFile(pathBefore, 'utf8').then(() => true).catch(() => false);
 
     await runner.run({ ...ctx, rest: '/settings set nonExistentKey someValue' });
 
@@ -176,13 +170,7 @@ describe('/settings command', () => {
     expect(sysMsg?.content).toContain('nonExistentKey');
 
     // File should not have been written (still same state as before)
-    let existsAfter = false;
-    try {
-      await readFile(pathBefore, 'utf8');
-      existsAfter = true;
-    } catch {
-      existsAfter = false;
-    }
+    const existsAfter = await readFile(pathBefore, 'utf8').then(() => true).catch(() => false);
     expect(existsAfter).toBe(existsBefore);
   });
 
