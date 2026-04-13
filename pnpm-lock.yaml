@@ -66,6 +66,9 @@ importers:
       '@fixy/core':
         specifier: workspace:*
         version: link:../core
+      '@fixy/gemini-adapter':
+        specifier: workspace:*
+        version: link:../gemini-adapter
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -89,6 +92,19 @@ importers:
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
+  packages/gemini-adapter:
+    dependencies:
+      '@fixy/adapter-utils':
+        specifier: workspace:*
+        version: link:../adapter-utils
+      '@fixy/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^25.6.0

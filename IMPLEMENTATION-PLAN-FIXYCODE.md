@@ -797,7 +797,7 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ### Step 16 — Third Adapter (`@gemini` or `@opencode`)
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE — @gemini (Gemini CLI)
 
 **Goal:** Add a third coding agent adapter. Candidate: Gemini CLI (`gemini` binary, Google's official CLI) or OpenCode (`opencode` binary, open-source, multi-provider). Decision: whichever binary has a cleaner non-interactive execution path verified by hand before implementation starts (same auth passthrough test from §8).
 
