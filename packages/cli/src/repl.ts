@@ -477,6 +477,22 @@ export async function startRepl(params: ReplParams): Promise<void> {
           if (threadId !== null) {
             thread = await store.getThread(threadId, thread.projectRoot);
             process.stdout.write(`\x1b[38;5;105m✓\x1b[0m Switched to session ${threadId.slice(0, 8)}…\n`);
+
+            // Show last few messages as context
+            const recent = thread.messages.slice(-6);
+            if (recent.length > 0) {
+              process.stdout.write(`\n\x1b[2m── recent history ──\x1b[0m\n`);
+              for (const msg of recent) {
+                if (msg.role === 'user') {
+                  const preview = msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
+                  process.stdout.write(`\x1b[37m  you: ${preview}\x1b[0m\n`);
+                } else if (msg.role === 'agent' && msg.agentId) {
+                  const preview = msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
+                  process.stdout.write(`\x1b[2m  @${msg.agentId}: ${preview}\x1b[0m\n`);
+                }
+              }
+              process.stdout.write(`\x1b[2m────────────────────\x1b[0m\n`);
+            }
             return;
           }
         }
