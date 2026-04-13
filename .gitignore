@@ -27,8 +27,9 @@ Thumbs.db
 .omc/
 .remember/
 
-# Discussion files (internal planning, not part of the product)
+# Internal planning & strategy (not part of the product)
 *-discussion.txt
+IMPLEMENTATION-PLAN-FIXYCODE.md
 
 # npm
 *.tgz
