@@ -51,6 +51,9 @@ export class FixyCommandRunner {
       case '/status':
         await this._handleStatus(ctx);
         break;
+      case '/compact':
+        await this._handleCompact(args, ctx);
+        break;
       case '/red-room':
         await this._handleRedRoom(args, ctx);
         break;
@@ -469,6 +472,63 @@ export class FixyCommandRunner {
     }
 
     await this._appendSystemMessage(lines.join('\n').trimEnd(), ctx);
+  }
+
+  private async _handleCompact(args: string, ctx: FixyCommandContext): Promise<void> {
+    const trimmed = args.trim();
+
+    // Resolve adapter: explicit @mention wins, else fall back to current worker.
+    let adapterId = ctx.thread.workerModel;
+    if (trimmed.startsWith('@')) {
+      adapterId = trimmed.slice(1);
+    }
+
+    const adapter = ctx.registry.require(adapterId);
+
+    // Read fresh thread so message list is up to date.
+    const freshThread = await ctx.store.getThread(ctx.thread.id, ctx.thread.projectRoot);
+    const messagesBefore = freshThread.messages.length;
+
+    const runId = randomUUID();
+    const execCtx: FixyExecutionContext = {
+      runId,
+      agent: { id: adapter.id, name: adapter.name },
+      threadContext: {
+        threadId: freshThread.id,
+        projectRoot: freshThread.projectRoot,
+        worktreePath: freshThread.projectRoot,
+        repoRef: null,
+      },
+      // Send the full history — the compact operation needs everything.
+      messages: freshThread.messages,
+      prompt:
+        'Summarize this conversation in under 300 words. Preserve all decisions, file changes, and open questions.',
+      session: freshThread.agentSessions[adapterId] ?? null,
+      adapterArgs: freshThread.adapterArgs,
+      onLog: ctx.onLog,
+      onMeta: () => {},
+      onSpawn: () => {},
+      signal: ctx.signal,
+    };
+
+    const result = await adapter.execute(execCtx);
+
+    // Append the compact summary as a system message flagged with compacted: true.
+    const compactMsg: FixyMessage = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      role: 'system',
+      agentId: null,
+      content: result.summary,
+      runId: null,
+      dispatchedTo: [],
+      patches: [],
+      warnings: [],
+      compacted: true,
+    };
+    await ctx.store.appendMessage(ctx.thread.id, ctx.thread.projectRoot, compactMsg);
+
+    ctx.onLog('stdout', `[context compacted — ${messagesBefore} messages summarized]\n`);
   }
 
   private async _handleRedRoom(args: string, ctx: FixyCommandContext): Promise<void> {

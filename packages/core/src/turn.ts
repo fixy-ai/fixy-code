@@ -91,6 +91,16 @@ export class TurnController {
     }
   }
 
+  private _buildMessageList(messages: FixyMessage[]): FixyMessage[] {
+    // Find the last compact point; if found, send only that message + everything after it.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]!.compacted === true) {
+        return messages.slice(i);
+      }
+    }
+    return messages;
+  }
+
   private _findLastAgentId(thread: FixyThread): string | null {
     for (let i = thread.messages.length - 1; i >= 0; i--) {
       const msg = thread.messages[i];
@@ -120,7 +130,7 @@ export class TurnController {
         worktreePath: freshThread.projectRoot,
         repoRef: null,
       },
-      messages: freshThread.messages,
+      messages: this._buildMessageList(freshThread.messages),
       prompt: body,
       session: freshThread.agentSessions[agentId] ?? null,
       adapterArgs: freshThread.adapterArgs,

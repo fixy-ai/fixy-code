@@ -35,6 +35,8 @@ export interface FixyMessage {
   patches: FixyPatch[];
   /** Non-fatal warnings surfaced to the user. */
   warnings: string[];
+  /** True on a system message that contains a /compact summary. Messages before this point are excluded from adapter context. */
+  compacted?: boolean;
 }
 
 export interface FixyPatch {
