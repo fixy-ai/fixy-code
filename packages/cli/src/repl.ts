@@ -178,18 +178,33 @@ export async function startRepl(params: ReplParams): Promise<void> {
     const adapterMatch = msgContent.match(/^MODEL_SELECT @(\w+)/);
     const adapterId = adapterMatch?.[1] ?? thread.workerModel;
 
+    // Parse model ids from numbered list in the message
+    const modelMatches = [...msgContent.matchAll(/\[(\d+)\]\s+([\w.-]+)/g)];
+    const modelIds = modelMatches.map((m) => m[2]!);
+    const range = modelIds.length > 0 ? `1-${modelIds.length}` : 'model';
+    const prompt = modelIds.length > 0
+      ? `\x1b[38;5;105m[${range}]>\x1b[0m `
+      : `\x1b[38;5;105m[model]>\x1b[0m `;
+
     while (true) {
-      const raw = await askChoice('\x1b[38;5;105m[model]>\x1b[0m ');
+      const raw = await askChoice(prompt);
       if (raw === null) return null;
       const choice = raw.trim();
       if (choice.length === 0) continue;
+
+      // Resolve number to model id if applicable
+      const n = parseInt(choice, 10);
+      const resolvedModel =
+        modelIds.length > 0 && n >= 1 && n <= modelIds.length
+          ? modelIds[n - 1]!
+          : choice;
 
       // Ask save preference
       const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ');
       if (saveRaw === null) return null;
       const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
 
-      return `@fixy /model @${adapterId} apply ${choice} ${save}`;
+      return `@fixy /model @${adapterId} apply ${resolvedModel} ${save}`;
     }
   };
 
@@ -289,6 +304,11 @@ export async function startRepl(params: ReplParams): Promise<void> {
           const choiceInput = await resolveWorkerChoice(lastMsg.content);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
+            // After setting the worker, immediately trigger model selection for it
+            const adapterId = choiceInput.match(/@fixy \/worker (\w+)/)?.[1];
+            if (adapterId) {
+              await runTurn(`@fixy /model @${adapterId}`);
+            }
             return;
           }
         }
