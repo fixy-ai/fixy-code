@@ -110,10 +110,24 @@ export async function startRepl(params: ReplParams): Promise<void> {
       // Use setImmediate so readline has already updated rl.line before we read it.
       setImmediate(() => {
         const line = rl.line;
-        if (line === '/') {
-          drawMenu(SLASH_MENU);
-        } else if (line === '@') {
+        if (line === '@') {
           drawMenu(atMenu);
+        } else if (line.startsWith('/')) {
+          const filtered = SLASH_MENU.filter((item) =>
+            item.name.startsWith(line),
+          );
+          if (filtered.length > 0) {
+            drawMenu(filtered);
+          } else {
+            eraseMenu();
+          }
+        } else if (line.startsWith('@') && line.length > 1) {
+          const filtered = atMenu.filter((item) => item.name.startsWith(line));
+          if (filtered.length > 0) {
+            drawMenu(filtered);
+          } else {
+            eraseMenu();
+          }
         } else {
           eraseMenu();
         }
