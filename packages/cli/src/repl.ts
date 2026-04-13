@@ -65,12 +65,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
     const eraseMenu = (): void => {
       if (menuHeight === 0) return;
-      // Move down through each menu line and erase it, then come back up.
-      let seq = '';
+      // Save cursor, move down and erase each menu line, then restore cursor.
+      let seq = '\x1b[s'; // save cursor position
       for (let i = 0; i < menuHeight; i++) {
         seq += '\x1b[1B\x1b[2K'; // cursor down 1, erase entire line
       }
-      seq += `\x1b[${menuHeight}A`; // cursor back up
+      seq += '\x1b[u'; // restore cursor position
       process.stdout.write(seq);
       menuHeight = 0;
     };
@@ -81,8 +81,8 @@ export async function startRepl(params: ReplParams): Promise<void> {
         (item) =>
           `  ${MENU_INDIGO}${item.name.padEnd(12)}${MENU_RESET}${MENU_DIM}${item.desc}${MENU_RESET}`,
       );
-      // Print menu below the current prompt line, then move cursor back up.
-      process.stdout.write('\n' + lines.join('\n') + `\x1b[${lines.length}A\r`);
+      // Save cursor, print menu below the current prompt line, then restore cursor.
+      process.stdout.write('\x1b[s\n' + lines.join('\n') + '\x1b[u');
       menuHeight = lines.length;
     };
 
