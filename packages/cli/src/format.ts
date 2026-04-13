@@ -31,6 +31,7 @@ export function startupPanel(
   models: Record<string, string | null>,
   projectRoot: string,
   threadId: string,
+  worker: string,
 ): string {
   const cols = Math.max(Math.min(process.stdout.columns ?? 80, 80), 52);
   const innerWidth = cols - 2;
@@ -49,6 +50,7 @@ export function startupPanel(
   const contentLines: string[] = [
     `${BOLD}${FIXY_COLOR}Fixy v${version}${RESET}`,
     `${DIM}agents: ${agentDisplay}${RESET}`,
+    `${DIM}worker: @${worker}${RESET}`,
     `${DIM}directory: ${dirDisplay}${RESET}`,
     `${DIM}thread: ${threadId}${RESET}`,
   ];

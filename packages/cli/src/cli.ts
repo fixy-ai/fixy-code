@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager } from '@fixy/core';
+import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, defaultSettings, settingsPath } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
 import { createCodexAdapter } from '@fixy/codex-adapter';
 import { createGeminiAdapter } from '@fixy/gemini-adapter';
@@ -89,6 +90,44 @@ async function checkForUpdate(localVersion: string): Promise<void> {
   }
 }
 
+async function runOnboarding(adapterIds: string[]): Promise<string> {
+  const INDIGO = '\x1b[38;5;105m';
+  const DIM = '\x1b[2m';
+  const BOLD = '\x1b[1m';
+  const RESET = '\x1b[0m';
+
+  process.stdout.write(`\n${BOLD}${INDIGO}Welcome to Fixy!${RESET}\n\n`);
+  process.stdout.write(
+    `${DIM}A ${RESET}${BOLD}worker${RESET}${DIM} is your default AI agent — the one that responds\n` +
+    `when you type a message without an @mention. You can change\n` +
+    `it any time with: @fixy /worker <agent>${RESET}\n\n`,
+  );
+  process.stdout.write(`${INDIGO}Available agents:${RESET}\n`);
+  adapterIds.forEach((id, i) => {
+    process.stdout.write(`  ${INDIGO}${i + 1}${RESET}  @${id}\n`);
+  });
+  process.stdout.write(`\n`);
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const chosen = await new Promise<string>((resolve) => {
+    const ask = (): void => {
+      rl.question(`${INDIGO}Choose default worker [1-${adapterIds.length}]:${RESET} `, (ans) => {
+        const n = parseInt(ans.trim(), 10);
+        if (n >= 1 && n <= adapterIds.length) {
+          rl.close();
+          resolve(adapterIds[n - 1]!);
+        } else {
+          ask();
+        }
+      });
+    };
+    ask();
+  });
+
+  process.stdout.write(`\n${INDIGO}✓${RESET}  Worker set to @${chosen}. All set!\n\n`);
+  return chosen;
+}
+
 async function main(): Promise<void> {
   const gitRoot = await findGitRoot(process.cwd());
   if (!gitRoot) {
@@ -129,9 +168,23 @@ async function main(): Promise<void> {
   );
   const models: Record<string, string | null> = Object.fromEntries(modelEntries);
 
+  // First-run onboarding: show wizard if settings.json doesn't exist yet.
+  const isFirstRun = !existsSync(settingsPath());
+  if (isFirstRun) {
+    const chosenWorker = await runOnboarding(registry.list().map((a) => a.id));
+    const settings = await loadSettings();
+    settings.defaultWorker = chosenWorker;
+    await saveSettings(settings);
+  }
+
+  const settings = await loadSettings();
+
   const thread = threadId
     ? await store.getThread(threadId, projectRoot)
     : await store.createThread(projectRoot);
+
+  // Thread worker defaults to settings.defaultWorker on creation; keep in sync.
+  const currentWorker = thread.workerModel ?? settings.defaultWorker;
 
   // Start update check early so the network request runs while we render the panel.
   const updateCheck = checkForUpdate(version);
@@ -145,6 +198,7 @@ async function main(): Promise<void> {
       models,
       projectRoot,
       thread.id,
+      currentWorker,
     ) + '\n',
   );
 

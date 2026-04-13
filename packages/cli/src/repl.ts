@@ -43,10 +43,20 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let turnAbort: AbortController | null = null;
   let spinner: ReturnType<typeof createSpinner> | null = null;
 
+  const allCompletions: string[] = [
+    ...SLASH_MENU.map((m) => m.name),
+    ...registry.list().map((a) => `@${a.id}`),
+    '@fixy',
+  ];
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     terminal: process.stdin.isTTY ?? false,
+    completer: (line: string): [string[], string] => {
+      const hits = allCompletions.filter((c) => c.startsWith(line));
+      return [hits.length ? hits : [], line];
+    },
   });
 
   // ── Autocomplete menus (TTY only) ──────────────────────────────────────────
@@ -207,7 +217,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
     try {
       thread = await store.getThread(thread.id, thread.projectRoot);
-      spinner.start('thinking...');
+      // Show which agent will respond (parse @mention, else fall back to worker)
+      const mentionMatch = input.match(/^@(\w+)/);
+      const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
+      spinner.start(`@${targetAgent}`);
       let headerPrinted = false;
 
       await turnController.runTurn({
