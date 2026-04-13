@@ -56,7 +56,7 @@ async function checkForUpdate(localVersion: string): Promise<void> {
 
     const remoteVersion = data.version;
     process.stdout.write(
-      `${INDIGO}  ℹ  fixy v${remoteVersion} available — update now? (y/n) ${RESET}`,
+      `${INDIGO}  ℹ  Fixy v${remoteVersion} Available — Update Now? (Y/n) ${RESET}`,
     );
 
     const answer = await new Promise<string>((resolve) => {

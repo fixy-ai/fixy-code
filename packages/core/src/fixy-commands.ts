@@ -69,6 +69,15 @@ export class FixyCommandRunner {
   }
 
   private async _handleWorker(adapterId: string, ctx: FixyCommandContext): Promise<void> {
+    if (!adapterId.trim()) {
+      const adapters = ctx.registry.list();
+      const lines: string[] = ['WORKER_SELECT', 'Choose your default worker:'];
+      for (let i = 0; i < adapters.length; i++) {
+        lines.push(`  [${i + 1}] @${adapters[i]!.id} — ${adapters[i]!.name}`);
+      }
+      await this._appendSystemMessage(lines.join('\n'), ctx);
+      return;
+    }
     ctx.registry.require(adapterId);
 
     const fresh = await ctx.store.getThread(ctx.thread.id, ctx.thread.projectRoot);

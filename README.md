@@ -72,7 +72,7 @@ That's it. Fixy detects which agents you have installed and shows them in the he
 Fixy checks for updates automatically every time you start it. If a new version is available, you will see:
 
 ```
-  ℹ  fixy v0.0.8 available — update now? (y/n)
+  ℹ  Fixy v0.0.8 Available — Update Now? (Y/n)
 ```
 
 Press `y` to update in one click. Press `n` to skip and continue.

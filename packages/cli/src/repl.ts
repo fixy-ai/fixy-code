@@ -193,6 +193,20 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
+  const resolveWorkerChoice = async (msgContent: string): Promise<string | null> => {
+    const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
+    const adapters = matches.map((m) => m[2]!);
+    if (adapters.length === 0) return null;
+    const range = `1-${adapters.length}`;
+    while (true) {
+      const choice = await askChoice(`\x1b[38;5;105m[${range}]>\x1b[0m `);
+      if (choice === null) return null;
+      const n = parseInt(choice, 10);
+      if (n >= 1 && n <= adapters.length) return `@fixy /worker ${adapters[n - 1]}`;
+      process.stdout.write(`Please type a number between ${range}\n`);
+    }
+  };
+
   const resolveDisagreementChoice = async (msgContent: string): Promise<string | null> => {
     const matchA = msgContent.match(/\[1\] Go with @(\w+)/);
     const matchB = msgContent.match(/\[2\] Go with @(\w+)/);
@@ -257,6 +271,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
         if (lastMsg.content.startsWith('MODEL_SELECT')) {
           const choiceInput = await resolveModelChoice(lastMsg.content);
+          if (choiceInput !== null) {
+            await runTurn(choiceInput);
+            return;
+          }
+        }
+
+        if (lastMsg.content.startsWith('WORKER_SELECT')) {
+          const choiceInput = await resolveWorkerChoice(lastMsg.content);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
             return;
