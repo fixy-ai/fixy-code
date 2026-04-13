@@ -6,7 +6,7 @@ import type {
   TurnController,
   WorktreeManager,
 } from '@fixy/core';
-import { loadSettings } from '@fixy/core';
+import { loadSettings, loadAuth, heartbeat } from '@fixy/core';
 import { PROMPT, createSpinner } from './format.js';
 
 /** Strip markdown bold/italic markers from terminal output. */
@@ -44,6 +44,8 @@ const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/settings', desc: 'view or update global settings' },
   { name: '/reset',    desc: 'abort current turn and reset agent sessions' },
   { name: '/status',   desc: 'show adapter and session status' },
+  { name: '/account',  desc: 'view account, plan & usage' },
+  { name: '/upgrade',  desc: 'open plan management in browser' },
   { name: '/red-room', desc: 'toggle adversarial mode on/off' },
   { name: '/quit',     desc: 'exit fixy' },
 ];
@@ -164,6 +166,19 @@ export async function startRepl(params: ReplParams): Promise<void> {
     rl.on('line', () => eraseMenu());
   }
   // ──────────────────────────────────────────────────────────────────────────
+
+  // Start heartbeat interval (only if signed in)
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  const authForHeartbeat = await loadAuth();
+  if (authForHeartbeat) {
+    heartbeatTimer = setInterval(() => {
+      heartbeat(thread.id).catch(() => {});
+    }, 5 * 60 * 1000);
+  }
+
+  process.on('exit', () => {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+  });
 
   process.on('SIGINT', () => {
     if (turnActive && turnAbort) {

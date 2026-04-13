@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, defaultSettings, settingsPath, runDeviceAuthFlow, loadAuth } from '@fixy/core';
+import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, defaultSettings, settingsPath, runDeviceAuthFlow, loadAuth, saveAuth, isAuthExpired, clearAuth, fetchProfile, registerSession } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
 import { createCodexAdapter } from '@fixy/codex-adapter';
 import { createGeminiAdapter } from '@fixy/gemini-adapter';
@@ -280,7 +280,33 @@ async function main(): Promise<void> {
   // Start update check early so the network request runs while we render the panel.
   const updateCheck = skipUpdateCheck ? Promise.resolve() : checkForUpdate(version);
 
-  const auth = await loadAuth();
+  let auth = await loadAuth();
+
+  // Check token expiry on startup
+  if (auth && isAuthExpired(auth)) {
+    process.stdout.write('\x1b[2mSession expired. Run /login to sign in again.\x1b[0m\n');
+    await clearAuth();
+    auth = null;
+  }
+
+  // Sync plan from server (non-blocking)
+  if (auth) {
+    fetchProfile()
+      .then(async (profile) => {
+        if (auth && profile.plan !== auth.plan) {
+          auth.plan = profile.plan;
+          await saveAuth(auth);
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Register session with backend (fire-and-forget)
+  if (auth) {
+    registerSession(thread.id, projectRoot, thread.workerModel ?? null)
+      .catch(() => {});
+  }
+
   const authInfo = auth ? { email: auth.email, plan: auth.plan } : null;
 
   if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');

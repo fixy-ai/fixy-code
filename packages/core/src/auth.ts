@@ -78,6 +78,12 @@ export async function pollDeviceAuth(deviceCode: string): Promise<PollResult> {
   return res.json() as Promise<PollResult>;
 }
 
+/** Check whether the auth token has expired locally. */
+export function isAuthExpired(auth: FixyAuth): boolean {
+  if (!auth.expiresAt) return false;
+  return new Date(auth.expiresAt).getTime() < Date.now();
+}
+
 /**
  * Run the full device auth flow: request code, show URL, poll until authorized.
  * Returns the auth object on success, null if expired/cancelled.

@@ -12,6 +12,7 @@ import type { FixyMessage, FixyThread } from './thread.js';
 import type { WorktreeManager } from './worktree.js';
 import { getThreadFile } from './paths.js';
 import { loadAuth, clearAuth, runDeviceAuthFlow } from './auth.js';
+import { registerSession, fetchProfile } from './api.js';
 
 export interface FixyCommandContext {
   thread: FixyThread;
@@ -72,6 +73,12 @@ export class FixyCommandRunner {
         break;
       case '/new':
         await this._handleNew(ctx);
+        break;
+      case '/account':
+        await this._handleAccount(ctx);
+        break;
+      case '/upgrade':
+        await this._handleUpgrade(ctx);
         break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
@@ -869,35 +876,99 @@ export class FixyCommandRunner {
 
   private async _handleNew(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
-    const plan = auth?.plan ?? 'free';
 
-    // Plan-based session limits
-    const MAX_SESSIONS: Record<string, number> = {
-      free: 1,
-      starter: 3,
-      pro: 10,
-      team: 50,
-    };
-    const limit = MAX_SESSIONS[plan] ?? 1;
-
-    // Count existing threads for this project
-    const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
-    if (threads.length >= limit) {
-      const upgrade = plan === 'free'
-        ? '\nSign in with /login or upgrade at https://fixy.ai/code'
-        : '\nUpgrade your plan at https://fixy.ai/code';
+    // If not signed in, allow limited local sessions (free anonymous)
+    if (!auth) {
+      const OFFLINE_MAX_THREADS = 3;
+      const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
+      if (threads.length >= OFFLINE_MAX_THREADS) {
+        await this._appendSystemMessage(
+          `Session limit reached (${threads.length}/${OFFLINE_MAX_THREADS} on free plan).\nSign in with /login to unlock more sessions.`,
+          ctx,
+        );
+        return;
+      }
+      const newThread = await ctx.store.createThread(ctx.thread.projectRoot);
+      newThread.workerModel = ctx.thread.workerModel;
       await this._appendSystemMessage(
-        `Session limit reached (${threads.length}/${limit} on ${plan} plan).${upgrade}`,
+        `NEW_THREAD\nNew session created: ${newThread.id}\nSwitch to it with: fixy --thread ${newThread.id}`,
         ctx,
       );
       return;
     }
 
-    const newThread = await ctx.store.createThread(ctx.thread.projectRoot);
-    newThread.workerModel = ctx.thread.workerModel;
+    // Signed in — register session server-side (server enforces limits)
+    try {
+      const newThread = await ctx.store.createThread(ctx.thread.projectRoot);
+      newThread.workerModel = ctx.thread.workerModel;
+
+      await registerSession(
+        newThread.id,
+        ctx.thread.projectRoot,
+        ctx.thread.workerModel ?? null,
+      );
+
+      await this._appendSystemMessage(
+        `NEW_THREAD\nNew session created: ${newThread.id}\nSwitch to it with: fixy --thread ${newThread.id}`,
+        ctx,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this._appendSystemMessage(msg, ctx);
+    }
+  }
+
+  private async _handleAccount(ctx: FixyCommandContext): Promise<void> {
+    const auth = await loadAuth();
+    if (!auth) {
+      await this._appendSystemMessage(
+        'Not signed in. Run /login to connect your account.',
+        ctx,
+      );
+      return;
+    }
+
+    try {
+      const profile = await fetchProfile();
+      const lines = [
+        'ACCOUNT',
+        '',
+        `  Email:    ${profile.email}`,
+        `  Plan:     ${profile.plan}`,
+        `  Sessions: ${profile.sessionsUsed}${profile.sessionsLimit === -1 ? '' : `/${profile.sessionsLimit}`}`,
+        `  Threads:  ${profile.limits.activeThreads === -1 ? 'unlimited' : profile.limits.activeThreads}`,
+        `  Projects: ${profile.limits.projects === -1 ? 'unlimited' : profile.limits.projects}`,
+        `  History:  ${profile.limits.historyDays === -1 ? 'unlimited' : `${profile.limits.historyDays} days`}`,
+      ];
+      if (profile.subscription) {
+        lines.push(`  Status:   ${profile.subscription.status}`);
+        if (profile.subscription.currentPeriodEnd) {
+          lines.push(`  Renews:   ${profile.subscription.currentPeriodEnd}`);
+        }
+      }
+      lines.push('', '  Manage at https://fixy.ai/dashboard/code');
+      await this._appendSystemMessage(lines.join('\n'), ctx);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this._appendSystemMessage(`Failed to fetch account: ${msg}`, ctx);
+    }
+  }
+
+  private async _handleUpgrade(ctx: FixyCommandContext): Promise<void> {
+    const auth = await loadAuth();
+    if (!auth) {
+      await this._appendSystemMessage(
+        'Not signed in. Run /login first, then /upgrade.',
+        ctx,
+      );
+      return;
+    }
+
+    const { execFile } = await import('node:child_process');
+    execFile('open', ['https://fixy.ai/dashboard/code']);
 
     await this._appendSystemMessage(
-      `NEW_THREAD\nNew session created: ${newThread.id}\nSwitch to it with: fixy --thread ${newThread.id}`,
+      'Opening https://fixy.ai/dashboard/code in your browser.\nManage your plan and billing there.',
       ctx,
     );
   }
