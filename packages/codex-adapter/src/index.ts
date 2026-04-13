@@ -228,9 +228,10 @@ class CodexAdapter implements FixyAdapter {
             item !== null &&
             item['type'] === 'agent_message'
           ) {
-            const text = item['text'];
-            if (typeof text === 'string' && text.length > 0) {
-              ctx.onLog('stdout', text + '\n');
+            const rawText = item['text'];
+            if (typeof rawText === 'string' && rawText.length > 0) {
+              const text = rawText.replace(CODEX_STDIN_WARNING, '').trimStart();
+              if (text.length > 0) ctx.onLog('stdout', text + '\n');
             }
           }
         }
@@ -272,6 +273,7 @@ class CodexAdapter implements FixyAdapter {
     }
 
     const parsed = parseCodexStreamJson(result.stdout);
+    parsed.summary = parsed.summary.replace(CODEX_STDIN_WARNING, '').trimStart();
 
     const warnings: string[] = [];
     const filteredStderr = filterCodexNoise(result.stderr ?? '');
