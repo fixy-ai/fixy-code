@@ -97,13 +97,49 @@ class CodexAdapter implements FixyAdapter {
   }
 
   async listModels(): Promise<FixyModelInfo[]> {
-    const models: FixyModelInfo[] = [
-      { id: 'gpt-5.4', description: 'Latest GPT-5.4' },
-      { id: 'gpt-4o', description: 'GPT-4o — fast and capable' },
-      { id: 'gpt-4o-mini', description: 'GPT-4o mini — lightweight' },
+    const fallback: FixyModelInfo[] = [
+      { id: 'gpt-4o' },
+      { id: 'gpt-4o-mini' },
     ];
 
-    // Try to read current model from ~/.codex/config.toml and surface it first if not in list
+    const apiKey = process.env['OPENAI_API_KEY'];
+    let models: FixyModelInfo[] = fallback;
+
+    if (apiKey) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5_000);
+        let response: Response;
+        try {
+          response = await fetch('https://api.openai.com/v1/models', {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+
+        if (response.ok) {
+          const json = (await response.json()) as { data: Array<{ id: string }> };
+          const fetched = (json.data ?? [])
+            .filter(
+              (m) =>
+                m.id.startsWith('gpt-') ||
+                m.id.startsWith('o1') ||
+                m.id.startsWith('o3') ||
+                m.id.startsWith('o4'),
+            )
+            .sort((a, b) => (a.id < b.id ? 1 : -1))
+            .map((m) => ({ id: m.id }));
+
+          if (fetched.length > 0) models = fetched;
+        }
+      } catch {
+        // Fall through to fallback
+      }
+    }
+
+    // Prepend current model from config if not already in list
     try {
       const configPath = path.join(os.homedir(), '.codex', 'config.toml');
       const raw = await fs.readFile(configPath, 'utf8');
@@ -111,11 +147,11 @@ class CodexAdapter implements FixyAdapter {
       if (modelMatch) {
         const currentModel = modelMatch[1]!;
         if (!models.some((m) => m.id === currentModel)) {
-          models.unshift({ id: currentModel, description: 'current (from config.toml)' });
+          models = [{ id: currentModel }, ...models];
         }
       }
     } catch {
-      // Config not found — use base list
+      // Config not found — use list as-is
     }
 
     return models;

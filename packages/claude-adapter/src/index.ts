@@ -100,12 +100,44 @@ class ClaudeAdapter implements FixyAdapter {
     return null;
   }
 
-  listModels(): Promise<FixyModelInfo[]> {
-    return Promise.resolve([
+  async listModels(): Promise<FixyModelInfo[]> {
+    const fallback: FixyModelInfo[] = [
       { id: 'claude-opus-4-6', description: 'Most capable — best for complex tasks' },
       { id: 'claude-sonnet-4-6', description: 'Balanced speed and intelligence' },
       { id: 'claude-haiku-4-5', description: 'Fastest and most compact' },
-    ]);
+    ];
+
+    const apiKey = process.env['ANTHROPIC_API_KEY'];
+    if (!apiKey) return fallback;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5_000);
+      let response: Response;
+      try {
+        response = await fetch('https://api.anthropic.com/v1/models', {
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (!response.ok) return fallback;
+
+      const json = (await response.json()) as { data: Array<{ id: string; display_name: string }> };
+      const models = (json.data ?? [])
+        .filter((m) => m.id.startsWith('claude-'))
+        .sort((a, b) => (a.id < b.id ? 1 : -1))
+        .map((m) => ({ id: m.id, description: m.display_name }));
+
+      return models.length > 0 ? models : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
