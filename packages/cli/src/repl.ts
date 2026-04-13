@@ -17,13 +17,16 @@ const OUT_CODE_FENCE = '\x1b[2;36m'; // dim cyan — ``` markers
 const OUT_HEADING = '\x1b[1;37m';    // bold white — headings
 const OUT_STDERR = '\x1b[2;31m';     // dim red — stderr
 
-/** Strip markdown bold/italic markers from terminal output. */
+/** Strip markdown formatting from terminal output. */
 function stripMarkdown(text: string): string {
   return text
-    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')
-    .replace(/\*\*(.+?)\*\*/gs, '$1')
-    .replace(/\*([^*\n]+?)\*/gs, '$1')
-    .replace(/^#{1,6}\s+/gm, '');
+    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')       // ***bold italic***
+    .replace(/\*\*(.+?)\*\*/gs, '$1')            // **bold**
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/gs, '$1')  // *italic* (not ** or ***)
+    .replace(/^#{1,6}\s+/gm, '')                 // ## headings
+    .replace(/^(\s*)\*\s{2,}/gm, '$1• ')         // *   bullet → •
+    .replace(/^(\s*)-\s+/gm, '$1• ')             // - bullet → •
+    .replace(/`([^`\n]+)`/g, '$1');               // `inline code`
 }
 
 /**
@@ -58,9 +61,10 @@ function createColorizer(): {
           // Code — bright white
           colored.push(`${OUT_CODE}${line}${OUT_RESET}`);
         } else {
-          // Headings — bold white
+          const isHeading = /^#{1,6}\s/.test(line);
           const stripped = stripMarkdown(line);
-          if (/^#{1,6}\s/.test(line)) {
+          if (isHeading) {
+            // Headings — bold white
             colored.push(`${OUT_HEADING}${stripped}${OUT_RESET}`);
           } else {
             // Regular text — dim gray
