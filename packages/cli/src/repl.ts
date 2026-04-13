@@ -328,14 +328,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
     // Step 2: Pick effort (Codex only)
     let effortLetter = '';
     if (hasEffort) {
-      const effortRaw = await askChoice('\x1b[38;5;105m[a-d] effort (Enter to skip)>\x1b[0m ', signal);
+      const effortRaw = await askChoice('\x1b[38;5;105m[a-d] effort or Enter to skip\x1b[0m ', signal);
       if (effortRaw === null) return null;
       const letter = effortRaw.trim().toLowerCase();
       if (/^[a-d]$/.test(letter)) effortLetter = letter;
     }
 
     // Step 3: Save globally?
-    const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ', signal);
+    const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)\x1b[0m ', signal);
     if (saveRaw === null) return null;
     const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
 
@@ -348,7 +348,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel>\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel\x1b[0m `, signal);
       if (choice === null || choice === '') return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= adapters.length) return `@fixy /model @${adapters[n - 1]} toggle`;
@@ -362,7 +362,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}]>\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m[${range}]\x1b[0m `, signal);
       if (choice === null) return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= adapters.length) return `@fixy /worker ${adapters[n - 1]}`;
@@ -377,7 +377,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     const agentB = matchB?.[1] ?? thread.workerModel;
 
     while (true) {
-      const choice = await askChoice('\x1b[38;5;105m[1/2/3]>\x1b[0m ', signal);
+      const choice = await askChoice('\x1b[38;5;105m[1/2/3]\x1b[0m ', signal);
       if (choice === null) return null;
       if (choice === '1') return `@fixy Go with @${agentA}'s approach`;
       if (choice === '2') return `@fixy Go with @${agentB}'s approach`;
@@ -394,7 +394,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (threadIds.length === 0) return null;
     const range = `1-${threadIds.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel>\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel\x1b[0m `, signal);
       if (choice === null || choice === '') return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= threadIds.length) return threadIds[n - 1] ?? null;
