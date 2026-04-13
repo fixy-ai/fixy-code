@@ -74,6 +74,9 @@ export class FixyCommandRunner {
       case '/new':
         await this._handleNew(ctx);
         break;
+      case '/threads':
+        await this._handleThreads(args, ctx);
+        break;
       case '/account':
         await this._handleAccount(ctx);
         break;
@@ -877,13 +880,12 @@ export class FixyCommandRunner {
   private async _handleNew(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
 
-    // If not signed in, allow limited local sessions (free anonymous)
-    if (!auth) {
-      const OFFLINE_MAX_THREADS = 3;
+    // Free plan (not signed in or free tier) — locked to 1 thread
+    if (!auth || auth.plan === 'free') {
       const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
-      if (threads.length >= OFFLINE_MAX_THREADS) {
+      if (threads.length >= 1) {
         await this._appendSystemMessage(
-          `Session limit reached (${threads.length}/${OFFLINE_MAX_THREADS} on free plan).\nSign in with /login to unlock more sessions.`,
+          'Free plan allows only 1 session.\nSign in and upgrade at https://fixy.ai/dashboard/code to unlock more.\nUse /threads to view existing sessions.',
           ctx,
         );
         return;
@@ -971,6 +973,42 @@ export class FixyCommandRunner {
       'Opening https://fixy.ai/dashboard/code in your browser.\nManage your plan and billing there.',
       ctx,
     );
+  }
+
+  private async _handleThreads(args: string, ctx: FixyCommandContext): Promise<void> {
+    const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
+
+    if (threads.length === 0) {
+      await this._appendSystemMessage('No sessions found for this project.', ctx);
+      return;
+    }
+
+    // If user passed a thread id, switch to it
+    const target = args.trim();
+    if (target) {
+      const match = threads.find((t) => t.id === target || t.id.startsWith(target));
+      if (!match) {
+        await this._appendSystemMessage(`Thread not found: ${target}`, ctx);
+        return;
+      }
+      await this._appendSystemMessage(
+        `THREAD_SWITCH\nSwitch to session: fixy --thread ${match.id}`,
+        ctx,
+      );
+      return;
+    }
+
+    // List all threads
+    const lines = ['THREAD_LIST', 'Your sessions:'];
+    for (let i = 0; i < threads.length; i++) {
+      const t = threads[i]!;
+      const current = t.id === ctx.thread.id ? ' (current)' : '';
+      const date = new Date(t.updatedAt).toLocaleDateString();
+      const msgs = t.messages.length;
+      lines.push(`  [${i + 1}] ${t.id.slice(0, 8)}… — ${msgs} messages — ${date}${current}`);
+    }
+    lines.push('', 'Switch with: fixy --thread <id>');
+    await this._appendSystemMessage(lines.join('\n'), ctx);
   }
 
   private async _handleBare(prompt: string, ctx: FixyCommandContext): Promise<void> {

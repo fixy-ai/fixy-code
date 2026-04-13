@@ -39,6 +39,7 @@ const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/worker',   desc: 'set the worker adapter for this thread' },
   { name: '/model',    desc: 'view or change adapter models' },
   { name: '/new',      desc: 'create a new terminal session' },
+  { name: '/threads',  desc: 'list and switch between sessions' },
   { name: '/login',    desc: 'sign in to fixy.ai for more features' },
   { name: '/logout',   desc: 'sign out from fixy.ai' },
   { name: '/settings', desc: 'view or update global settings' },
