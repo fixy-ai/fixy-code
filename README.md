@@ -2,7 +2,7 @@
 
 **One terminal. Multiple AI coding agents. Working together.**
 
-Fixy Code lets you talk to Claude, Codex, and Gemini in a single conversation — at the same time. Each agent reviews the others, challenges bad ideas, and helps you pick the best solution. You keep your existing subscriptions. Fixy Code just coordinates.
+Fixy Code lets you talk to Claude and Codex in a single conversation — at the same time. Each agent reviews the other, challenges bad ideas, and helps you pick the best solution. You keep your existing subscriptions. Fixy Code just coordinates.
 
 > For the full product experience and web app, visit [fixy.ai](https://fixy.ai)
 > For Fixy Code documentation and updates, visit [fixy.ai/code](https://fixy.ai/code)
@@ -13,7 +13,7 @@ Fixy Code lets you talk to Claude, Codex, and Gemini in a single conversation �
 
 Every AI coding tool gives you one agent's opinion. That agent will confidently agree with your bad ideas, miss its own blind spots, and never tell you when it's wrong.
 
-Fixy Code fixes this by putting Claude (Anthropic), Codex (OpenAI), and Gemini (Google) in the same room. They were trained by different companies with different blind spots. Their disagreements are signal, not noise.
+Fixy Code fixes this by putting Claude (Anthropic) and Codex (OpenAI) in the same room. They were trained by different companies with different blind spots. Their disagreements are signal, not noise.
 
 ---
 
@@ -34,7 +34,7 @@ Fixy Code never stores your code, your prompts, or your credentials. Everything 
 
 ## No login required
 
-If you're already logged into Claude Code, Codex CLI, or Gemini CLI — Fixy works immediately. No API keys to configure, no extra accounts to create, no AI provider setup. Fixy uses your existing sessions as-is.
+If you're already logged into Claude Code or Codex CLI — Fixy works immediately. No API keys to configure, no extra accounts to create, no AI provider setup. Fixy uses your existing sessions as-is.
 
 ---
 
@@ -46,9 +46,8 @@ Before installing Fixy Code, make sure you have at least one of these installed 
 |---|---|---|
 | Claude Code | `npm install -g @anthropic-ai/claude-code` | `claude` |
 | Codex CLI | `npm install -g @openai/codex` | `codex` |
-| Gemini CLI | `npm install -g @google/gemini-cli` | `gemini` |
 
-You need Node.js 20 or higher.
+You need Node.js 20 or higher. macOS first — Linux should work. Windows is not supported yet.
 
 ---
 
@@ -104,7 +103,6 @@ npm uninstall -g @fixy/code
 ```
 @claude <message>         — send a message to Claude Code
 @codex <message>          — send a message to Codex CLI
-@gemini <message>         — send a message to Gemini CLI
 @claude @codex <message>  — send to multiple agents at once
 ```
 
@@ -188,7 +186,6 @@ Settings are stored in `~/.fixy/settings.json`. You can edit this file directly 
 | `maxTodosPerBatch` | `5` | How many tasks agents execute per batch |
 | `claudeArgs` | `""` | Extra CLI flags passed to Claude on every call |
 | `codexArgs` | `""` | Extra CLI flags passed to Codex on every call |
-| `geminiArgs` | `""` | Extra CLI flags passed to Gemini on every call |
 
 ### Per-conversation overrides
 
@@ -207,11 +204,12 @@ These are not saved globally — they apply only to the current session.
 
 | Plan | Price | What you get |
 |---|---|---|
-| **Free** | $0 | Full access on day one. After that: 3 active threads, 1 project, 30-day history, terminal only |
-| **Pro** | $10/month | Unlimited threads, unlimited projects, full history, all clients (terminal + desktop + VS Code when available) |
-| **Team** | $20/workspace/month | Everything in Pro + shared workspaces, shared history, audit logs, admin controls (up to 3 seats) |
+| **Free** | $0 | Full access on day one. After that: 3 active threads, 1 project, 30-day history, terminal only, no background automations, community support |
+| **Pro** | $10/user/month | Unlimited threads, unlimited projects, 90-day history, background automations, all clients (terminal + desktop + VS Code when built), email support |
+| **Team** | $20/workspace/month | Everything in Pro + up to 5 seats, shared workspaces, shared history, audit logs, admin controls, priority support |
+| **Business** | Custom | Everything in Team + unlimited seats, SSO, on-premise option, SLA, dedicated support, custom integrations |
 
-**Fixy never charges per agent call, per mention, or per turn.** One task = one thread, however many agents it uses internally.
+**Fixy never charges per @mention call, agent-to-agent turn, or adapter connection.** One task = one thread, however many agents it uses internally.
 
 For more information: [fixy.ai/code](https://fixy.ai/code)
 
