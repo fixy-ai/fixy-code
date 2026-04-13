@@ -24,11 +24,73 @@ This plan is the **source of truth** for v0. Do not re-litigate locked decisions
 | Routing handles | `@claude`, `@codex`, `@fixy` (reserved) |
 | Worker | User-selected via `@fixy /worker <adapter>`. Fixy Code never ships its own models. To change the model *within* a provider, the user configures it inside the provider's own CLI settings — Fixy Code only routes between adapters. |
 | Isolation | One **git worktree per `(thread, agent)`** pair |
-| Pricing | **Free** $0 · **Pro** $10/user/mo · **Team** $20/workspace (≤3 seats) |
-| Free tier | Day 1 full access → then 3 active threads, 1 project, 30-day history, terminal only |
-| Pro tier | Unlimited threads / projects / history, all clients (terminal + desktop + VS Code when built) |
-| Team tier | Pro + shared workspaces + shared history + audit logs + admin controls |
-| Pricing law | **Never meter `@mention` calls, agent-to-agent turns, or adapter connections.** One user task = one thread, however many internal turns it contains. |
+| Pricing | **Free** $0 · **Pro** $10/user/mo · **Team** $20/workspace (≤5 seats) · **Business** Custom |
+| Free tier | Day 1 full access → then 3 active threads, 1 project, 30-day history, terminal only, no background automations, community support |
+| Pro tier | Unlimited threads / projects, 90-day history, background automations, all clients (terminal + desktop + VS Code when built), email support |
+| Team tier | Everything in Pro + up to 5 seats, shared workspaces, shared history, audit logs, admin controls, priority support |
+| Business tier | Everything in Team + unlimited seats, SSO, on-premise option, SLA, dedicated support, custom integrations |
+| Pricing law | **Never meter `@mention` calls, agent-to-agent turns, or adapter connections.** One user task = one thread, however many internal turns it contains. A full agent-to-agent exchange inside one task counts as one conversation. |
+
+---
+
+## 0.1 Plan Details
+
+> These limits were decided in the pre-spec design sessions (claude-discussion.txt, gpt-discussion.txt) and are locked.
+
+### Pricing Philosophy
+
+- **"Use your existing tools. Pay Fixy for coordination."**
+- Fixy Code has NO models. Zero inference cost. User brings Claude Code, Codex, and their own fallback worker model.
+- Free is the acquisition channel. Paid tiers monetize the orchestration layer.
+- Never meter @mention calls, agent-to-agent turns, or adapter connections. One user task = one thread = one conversation, regardless of internal turns.
+- A full agent-to-agent exchange inside one task counts as one conversation, not multiple units.
+
+### Plan Comparison
+
+| Feature | Free ($0) | Pro ($10/mo) | Team ($20/mo) | Business (Custom) |
+|---|---|---|---|---|
+| **Day 1** | Full feature access | — | — | — |
+| **Active Threads** | 3 | Unlimited | Unlimited | Unlimited |
+| **Projects** | 1 | Unlimited | Unlimited | Unlimited |
+| **History Retention** | 30 days | 90 days | Unlimited (shared) | Unlimited |
+| **Clients** | Terminal only | Terminal + Desktop + VS Code | Terminal + Desktop + VS Code | All |
+| **Seats** | 1 | 1 | Up to 5 | Unlimited |
+| **Background Automations** | No | Yes | Yes | Yes |
+| **Shared Workspaces** | No | No | Yes | Yes |
+| **Shared History** | No | No | Yes | Yes |
+| **Audit Logs** | No | No | Yes | Yes |
+| **Admin Controls** | No | No | Yes | Yes |
+| **Support** | Community | Email | Priority | Dedicated |
+| **SSO** | No | No | No | Yes |
+| **On-Premise** | No | No | No | Yes |
+| **SLA** | No | No | No | Yes |
+| **Custom Integrations** | No | No | No | Yes |
+
+### Free Tier Behavior
+
+- **Day 1:** Full access to all features (no restrictions).
+- **Day 2 onwards:** Drops to limited free tier (3 threads, 1 project, 30-day history).
+- To open a new thread when at limit: close/archive an existing one.
+- No background automations on free.
+
+### Stripe Configuration (v1.0)
+
+| Plan | Stripe Price | Env Variable |
+|---|---|---|
+| Free | No Stripe (default) | — |
+| Pro | $10/mo recurring | `STRIPE_CODE_PRO_PRICE_ID` |
+| Team | $20/mo recurring | `STRIPE_CODE_TEAM_PRICE_ID` |
+| Business | Custom (contact sales) | No Stripe price — manual invoicing |
+
+- Use `metadata: { product: "fixy-code", planId: "<plan>" }` on all Stripe checkout sessions to distinguish from main Fixy subscriptions.
+- Reuse existing Stripe customer ID from the main Fixy `users` table via `getOrCreateCustomerId`.
+- Business tier: no Stripe self-serve. Show "Contact Us" on the pricing page. Handle manually when demand arrives.
+
+### What NOT to Build for Business Tier (Yet)
+
+- SSO, on-premise, SLA, custom integrations — these are v2+ features.
+- Show the Business card on the pricing page with "Contact Us" button only.
+- Zero backend work for Business until real enterprise demand exists.
 
 ---
 
@@ -1078,7 +1140,7 @@ interface FixySettings {
 | **v0.3** | Unified `sessionCodec` so each adapter can serialize/deserialize its session into a neutral, human-readable form, enabling thread export/import and verdict replay | Mirrors Paperclip's `sessionCodec` concept (`claudeSessionCodec`, `codexSessionCodec` in `server/src/adapters/registry.ts` lines 95, 110). |
 | **v0.4** | Third adapter. Either `@gemini` via Gemini CLI or `@opencode` via OpenCode, chosen by whichever reference codebase is cleanest to port from Paperclip's `packages/adapters/*-local/` | Same `FixyAdapter` shape, same `buildInheritedEnv` discipline. |
 | **v0.5** | Context summarization / compaction | When a thread exceeds a configurable token budget, an out-of-band worker invocation summarizes older turns and replaces them in the message tail that gets sent to adapters. The full history is kept on disk untouched. |
-| **v1.0** | Stripe + Pro/Team gating | Free tier enforcement (3 active threads, 1 project, 30-day history). Billing runs as a tiny hosted service; Fixy Code calls it once per session to check entitlement. The CLI stays local-first — the server only sees tokens + counts, never prompts or diffs. |
+| **v1.0** | Stripe + Pro/Team/Business gating | Free tier enforcement (3 active threads, 1 project, 30-day history, no background automations). Pro tier (unlimited threads/projects, 90-day history, background automations). Team tier (Pro + 5 seats, shared workspaces, audit logs). Business tier (contact sales placeholder). Billing runs as a tiny hosted service; Fixy Code calls it once per session to check entitlement. The CLI stays local-first — the server only sees tokens + counts, never prompts or diffs. |
 | **v1.1** | Tauri desktop app | A thin native wrapper around the same `@fixy/core` engine. No logic duplication. |
 | **v1.2** | VS Code extension | Same engine, called from an extension host. The editor surfaces threads, worktrees, and diffs natively. |
 | **v2.0** | Team sync | Shared workspaces, shared thread history, per-seat auth. This is when Fixy Code grows an opinionated server, not before. |
