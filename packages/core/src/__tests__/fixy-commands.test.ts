@@ -332,14 +332,14 @@ describe('FixyCommandRunner', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 4: /settings — returns stub message
+  // Test 4: /settings — prints current settings
   // -------------------------------------------------------------------------
-  it('/settings — returns stub message', async () => {
+  it('/settings — prints current settings key/value pairs', async () => {
     await runner.run(makeCtx({ rest: '/settings' }));
 
     const fresh = await store.getThread(thread.id, thread.projectRoot);
     const sysMsg = fresh.messages.find(
-      (m) => m.role === 'system' && m.content === 'settings command not yet implemented',
+      (m) => m.role === 'system' && m.content.includes('defaultWorker:'),
     );
     expect(sysMsg).toBeDefined();
   });

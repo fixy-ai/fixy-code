@@ -41,3 +41,8 @@ export function getThreadFile(projectRoot: string, threadId: string): string {
 export function getWorktreesDir(threadId: string): string {
   return join(getFixyHome(), 'worktrees', threadId);
 }
+
+/** Returns the path to the global settings file (~/.fixy/settings.json). */
+export function settingsPath(): string {
+  return join(getFixyHome(), 'settings.json');
+}

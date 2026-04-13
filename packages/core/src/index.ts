@@ -40,3 +40,8 @@ export { FixyCommandRunner } from './fixy-commands.js';
 export type { FixyCommandContext } from './fixy-commands.js';
 
 export { slugify } from './slugify.js';
+
+export type { FixySettings } from './settings.js';
+export { defaultSettings, loadSettings, saveSettings } from './settings.js';
+
+export { settingsPath } from './paths.js';

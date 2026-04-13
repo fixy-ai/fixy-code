@@ -3,6 +3,8 @@ import { rename, writeFile } from 'node:fs/promises';
 
 import type { FixyExecutionContext } from './adapter.js';
 import type { AdapterRegistry } from './registry.js';
+import { defaultSettings, loadSettings, saveSettings } from './settings.js';
+import type { FixySettings } from './settings.js';
 import type { LocalThreadStore } from './store.js';
 import type { FixyMessage, FixyThread } from './thread.js';
 import type { WorktreeManager } from './worktree.js';
@@ -39,7 +41,7 @@ export class FixyCommandRunner {
         await this._handleAll(args, ctx);
         break;
       case '/settings':
-        await this._handleSettings(ctx);
+        await this._handleSettings(args, ctx);
         break;
       case '/reset':
         await this._handleReset(ctx);
@@ -310,8 +312,87 @@ export class FixyCommandRunner {
     return todos;
   }
 
-  private async _handleSettings(ctx: FixyCommandContext): Promise<void> {
-    await this._appendSystemMessage('settings command not yet implemented', ctx);
+  private async _handleSettings(args: string, ctx: FixyCommandContext): Promise<void> {
+    const trimmed = args.trim();
+
+    if (trimmed === '' ) {
+      // /settings — print all key/value pairs
+      const settings = await loadSettings();
+      const lines = (Object.entries(settings) as Array<[keyof FixySettings, FixySettings[keyof FixySettings]]>)
+        .map(([k, v]) => `${k}: ${String(v)}`);
+      await this._appendSystemMessage(lines.join('\n'), ctx);
+      return;
+    }
+
+    if (trimmed === 'reset') {
+      // /settings reset — restore defaults
+      await saveSettings({ ...defaultSettings });
+      await this._appendSystemMessage('settings reset to defaults', ctx);
+      return;
+    }
+
+    if (trimmed.startsWith('set ')) {
+      // /settings set <key> <value>
+      const rest = trimmed.slice(4).trim();
+      const spaceIdx = rest.indexOf(' ');
+      if (spaceIdx === -1) {
+        await this._appendSystemMessage(
+          'usage: /settings set <key> <value>',
+          ctx,
+        );
+        return;
+      }
+      const key = rest.slice(0, spaceIdx) as keyof FixySettings;
+      const rawValue = rest.slice(spaceIdx + 1).trim();
+
+      if (!(key in defaultSettings)) {
+        const validKeys = Object.keys(defaultSettings).join(', ');
+        await this._appendSystemMessage(
+          `unknown settings key: "${key}"\nvalid keys: ${validKeys}`,
+          ctx,
+        );
+        return;
+      }
+
+      const current = loadSettings();
+      const settings = await current;
+      const defaultVal = defaultSettings[key];
+      let parsed: FixySettings[keyof FixySettings];
+
+      if (typeof defaultVal === 'boolean') {
+        if (rawValue !== 'true' && rawValue !== 'false') {
+          await this._appendSystemMessage(
+            `"${key}" expects true or false`,
+            ctx,
+          );
+          return;
+        }
+        parsed = rawValue === 'true' as FixySettings[typeof key];
+      } else if (typeof defaultVal === 'number') {
+        const n = Number(rawValue);
+        if (!Number.isFinite(n)) {
+          await this._appendSystemMessage(
+            `"${key}" expects a number`,
+            ctx,
+          );
+          return;
+        }
+        parsed = n as FixySettings[typeof key];
+      } else {
+        // string / union — accept as-is
+        parsed = rawValue as FixySettings[typeof key];
+      }
+
+      (settings as unknown as Record<string, unknown>)[key] = parsed;
+      await saveSettings(settings);
+      await this._appendSystemMessage(`${key} set to ${String(parsed)}`, ctx);
+      return;
+    }
+
+    await this._appendSystemMessage(
+      'usage: /settings | /settings set <key> <value> | /settings reset',
+      ctx,
+    );
   }
 
   private async _handleReset(ctx: FixyCommandContext): Promise<void> {
