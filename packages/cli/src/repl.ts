@@ -109,7 +109,6 @@ export async function startRepl(params: ReplParams): Promise<void> {
           process.stdout.write('\x1b[38;5;105m⊘ cancelled\x1b[0m\n');
         } else {
           process.stdout.write('\r\x1b[2K');
-          process.stdout.write(PROMPT);
         }
         return;
       }

@@ -81,6 +81,8 @@ async function checkForUpdate(localVersion: string): Promise<void> {
     try {
       execSync('npm install -g @fixy/code --registry https://registry.npmjs.org', { stdio: 'inherit' });
       process.stdout.write(`${INDIGO}  ✓  Updated to v${remoteVersion} — Fixy is restarting…${RESET}\n`);
+      // Destroy stdin to clean up event listeners before spawning child process
+      process.stdin.destroy();
       // Re-launch the updated binary; pass --skip-update-check so the fresh process skips the update check.
       spawnSync(process.argv[1]!, ['--skip-update-check', ...process.argv.slice(2)], {
         stdio: 'inherit',
