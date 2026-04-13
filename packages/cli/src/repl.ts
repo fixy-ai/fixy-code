@@ -395,7 +395,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       thread = await store.getThread(thread.id, thread.projectRoot);
       // Show spinner only when an external agent will respond (not for @fixy commands)
       const isFixyCommand = /^@fixy\s*\//.test(input);
-      const isAllCommand = /^@all\b/i.test(input) || /^@fixy\s+\/all\b/.test(input);
+      const isAllCommand = /@all\b/i.test(input) || /^@fixy\s+\/all\b/.test(input);
       if (!isFixyCommand && !isAllCommand) {
         const mentionMatch = input.match(/^@(\w+)/);
         const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
