@@ -17,6 +17,8 @@ import {
   runChildProcess,
 } from '@fixy/adapter-utils';
 
+import { loadSettings } from '@fixy/core';
+
 import { parseClaudeStreamJson } from './parse.js';
 
 class ClaudeAdapter implements FixyAdapter {
@@ -98,10 +100,17 @@ class ClaudeAdapter implements FixyAdapter {
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
-    const args: string[] = ['--print', '--output-format', 'text', '--dangerously-skip-permissions'];
+    const args: string[] = ['--print', '--output-format', 'text'];
 
     if (ctx.session) {
       args.push('--resume', ctx.session.sessionId);
+    }
+
+    // Extra args: thread override takes priority over global setting
+    const settings = await loadSettings();
+    const extraArgsStr = ctx.adapterArgs?.['claude'] ?? settings.claudeArgs;
+    if (extraArgsStr.trim().length > 0) {
+      args.push(...extraArgsStr.trim().split(/\s+/));
     }
 
     const env = buildInheritedEnv({});

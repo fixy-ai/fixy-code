@@ -14,6 +14,8 @@ import {
   runChildProcess,
 } from '@fixy/adapter-utils';
 
+import { loadSettings } from '@fixy/core';
+
 import { parseCodexStreamJson } from './parse.js';
 
 // Codex CLI writes skill-loader errors and stdin warnings to stderr on startup — suppress them.
@@ -95,6 +97,11 @@ class CodexAdapter implements FixyAdapter {
     const resolvedCommand = await resolveCommand('codex');
     const env = buildInheritedEnv({});
 
+    // Extra args: thread override takes priority over global setting
+    const settings = await loadSettings();
+    const extraArgsStr = ctx.adapterArgs?.['codex'] ?? settings.codexArgs;
+    const extraArgs = extraArgsStr.trim().length > 0 ? extraArgsStr.trim().split(/\s+/) : [];
+
     let args: string[];
 
     if (ctx.session) {
@@ -106,6 +113,7 @@ class CodexAdapter implements FixyAdapter {
         '--json',
         '--skip-git-repo-check',
         '--full-auto',
+        ...extraArgs,
         ctx.prompt,
       ];
     } else {
@@ -115,6 +123,7 @@ class CodexAdapter implements FixyAdapter {
         '--json',
         '--skip-git-repo-check',
         '--full-auto',
+        ...extraArgs,
         ctx.prompt,
       ];
     }

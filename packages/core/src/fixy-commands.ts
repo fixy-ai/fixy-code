@@ -54,6 +54,9 @@ export class FixyCommandRunner {
       case '/red-room':
         await this._handleRedRoom(args, ctx);
         break;
+      case '/set':
+        await this._handleSet(args, ctx);
+        break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
     }
@@ -122,6 +125,7 @@ export class FixyCommandRunner {
         messages: ctx.thread.messages,
         prompt: adapterPrompt,
         session: ctx.thread.agentSessions[adapter.id] ?? null,
+        adapterArgs: ctx.thread.adapterArgs,
         onLog: ctx.onLog,
         onMeta: () => {},
         onSpawn: () => {},
@@ -486,6 +490,44 @@ export class FixyCommandRunner {
     );
   }
 
+  private async _handleSet(args: string, ctx: FixyCommandContext): Promise<void> {
+    const trimmed = args.trim();
+
+    if (trimmed === '') {
+      // /set with no args — print current thread-level overrides
+      const overrides = ctx.thread.adapterArgs ?? {};
+      const entries = Object.entries(overrides);
+      if (entries.length === 0) {
+        await this._appendSystemMessage('no thread-level adapter arg overrides set', ctx);
+      } else {
+        const lines = entries.map(([id, flags]) => `${id}: ${flags}`);
+        await this._appendSystemMessage(lines.join('\n'), ctx);
+      }
+      return;
+    }
+
+    const spaceIdx = trimmed.indexOf(' ');
+    if (spaceIdx === -1) {
+      await this._appendSystemMessage('usage: /set <adapterId> <flags>', ctx);
+      return;
+    }
+
+    const adapterId = trimmed.slice(0, spaceIdx);
+    const flags = trimmed.slice(spaceIdx + 1).trim();
+
+    ctx.thread.adapterArgs = { ...ctx.thread.adapterArgs, [adapterId]: flags };
+
+    const fresh = await ctx.store.getThread(ctx.thread.id, ctx.thread.projectRoot);
+    fresh.adapterArgs = { ...fresh.adapterArgs, [adapterId]: flags };
+    fresh.updatedAt = new Date().toISOString();
+    await this._persistThread(fresh);
+
+    await this._appendSystemMessage(
+      `${adapterId} args set to: ${flags} (this conversation only)`,
+      ctx,
+    );
+  }
+
   private _formatDisagreementPanel(d: DisagreementResult): string {
     const maxLen = 200;
     const summaryA = d.summaryA.length > maxLen ? d.summaryA.slice(0, maxLen) + '...' : d.summaryA;
@@ -518,6 +560,7 @@ export class FixyCommandRunner {
       messages: thread.messages,
       prompt,
       session: thread.agentSessions[thread.workerModel] ?? null,
+      adapterArgs: thread.adapterArgs,
       onLog: ctx.onLog,
       onMeta: () => {},
       onSpawn: () => {},

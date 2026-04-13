@@ -26,6 +26,8 @@ export interface FixyExecutionContext {
   prompt: string;
   /** Opaque adapter-owned state from the previous turn in this thread. */
   session: FixySession | null;
+  /** Thread-level extra CLI flags for this adapter (overrides global settings). */
+  adapterArgs?: Record<string, string>;
   /** Streamed stdout/stderr chunks. Adapters MUST call this. */
   onLog: (stream: 'stdout' | 'stderr', chunk: string, agentId?: string) => void;
   /** Called once with the resolved command + args + env for transcript/logging. */

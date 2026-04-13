@@ -12,6 +12,9 @@ export interface FixySettings {
   maxReviewRounds: number;
   maxTodosPerBatch: number;
   workerCount: number;
+  claudeArgs: string;
+  codexArgs: string;
+  geminiArgs: string;
 }
 
 export const defaultSettings: FixySettings = {
@@ -23,6 +26,9 @@ export const defaultSettings: FixySettings = {
   maxReviewRounds: 2,
   maxTodosPerBatch: 5,
   workerCount: 1,
+  claudeArgs: '',
+  codexArgs: '',
+  geminiArgs: '',
 };
 
 export async function loadSettings(): Promise<FixySettings> {

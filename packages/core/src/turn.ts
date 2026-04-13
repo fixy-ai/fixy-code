@@ -123,6 +123,7 @@ export class TurnController {
       messages: freshThread.messages,
       prompt: body,
       session: freshThread.agentSessions[agentId] ?? null,
+      adapterArgs: freshThread.adapterArgs,
       onLog: (stream, chunk) => params.onLog(stream, chunk, agentId),
       onMeta: () => {},
       onSpawn: () => {},

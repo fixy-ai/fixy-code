@@ -16,6 +16,7 @@ export interface FixyThread {
   agentSessions: Record<string, FixySession | null>; // per-adapter resume state
   worktrees: Record<string, string>; // agentId → absolute worktree path
   messages: FixyMessage[];
+  adapterArgs?: Record<string, string>; // thread-level override: adapterId → extra CLI flags
 }
 
 export interface FixyMessage {
