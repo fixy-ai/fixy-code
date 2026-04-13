@@ -1001,6 +1001,31 @@ geminiArgs: string;   // default: ""
 
 ---
 
+### Step 21 — One-Click Update Prompt at Startup
+
+**Status:** ✅ DONE
+
+**Goal:** When fixy detects a newer version on npm, instead of just printing the install command, prompt `update now? (y/n)`. If the user presses `y`, run `npm install -g @fixy/code` automatically and exit so the user can restart with the new version.
+
+**User-facing behaviour:**
+```
+  ℹ  fixy v0.0.12 available — update now? (y/n) y
+  updating…
+  … (npm output) …
+  ✓  updated to v0.0.12 — restart fixy
+```
+If user presses `n` (or any key that isn't `y`), fixy continues normally.
+
+**Files modified:**
+- `packages/cli/src/cli.ts` — `checkForUpdate()` now reads a single raw keypress, runs `npm install -g @fixy/code --registry https://registry.npmjs.org` via `execSync`, then `process.exit(0)`
+
+**Acceptance:**
+- When version is current: no output, no prompt
+- When newer version exists and user presses `n`: continues to REPL as normal
+- When newer version exists and user presses `y`: update runs, success/failure message printed, process exits
+
+---
+
 ### Step 19 — Global Settings Persistence (`~/.fixy/settings.json`)
 
 **Status:** ✅ DONE

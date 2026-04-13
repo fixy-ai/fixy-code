@@ -41,6 +41,7 @@ function isNewerVersion(remote: string, local: string): boolean {
 
 async function checkForUpdate(localVersion: string): Promise<void> {
   const INDIGO = '\x1b[38;5;105m';
+  const DIM = '\x1b[2m';
   const RESET = '\x1b[0m';
   try {
     const timeout = new Promise<never>((_, reject) =>
@@ -50,11 +51,39 @@ async function checkForUpdate(localVersion: string): Promise<void> {
       (r) => r.json() as Promise<{ version: string }>,
     );
     const data = await Promise.race([fetched, timeout]);
-    if (isNewerVersion(data.version, localVersion)) {
-      process.stdout.write(
-        `${INDIGO}  ℹ  fixy v${data.version} available → npm install -g @fixy/code${RESET}\n`,
-      );
+    if (!isNewerVersion(data.version, localVersion)) return;
+
+    const remoteVersion = data.version;
+    process.stdout.write(
+      `${INDIGO}  ℹ  fixy v${remoteVersion} available — update now? (y/n) ${RESET}`,
+    );
+
+    const answer = await new Promise<string>((resolve) => {
+      if (!process.stdin.isTTY) { resolve('n'); return; }
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.once('data', (buf) => {
+        const key = buf.toString();
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        resolve(key);
+      });
+    });
+
+    process.stdout.write(`${answer === 'y' ? 'y' : 'n'}\n`);
+
+    if (answer !== 'y') return;
+
+    process.stdout.write(`${DIM}  updating…${RESET}\n`);
+    // Safe: command is a hardcoded literal, no user input involved
+    const { execSync } = await import('node:child_process');
+    try {
+      execSync('npm install -g @fixy/code --registry https://registry.npmjs.org', { stdio: 'inherit' });
+      process.stdout.write(`${INDIGO}  ✓  updated to v${remoteVersion} — restart fixy${RESET}\n`);
+    } catch {
+      process.stdout.write(`\x1b[31m  ✗  update failed — run: npm install -g @fixy/code${RESET}\n`);
     }
+    process.exit(0);
   } catch {
     // fetch failed, timed out, or versions match — stay silent
   }
