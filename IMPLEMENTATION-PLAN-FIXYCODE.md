@@ -947,7 +947,7 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 
 ### Step 19 — Global Settings Persistence (`~/.fixy/settings.json`)
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE
 
 **Goal:** Persist user preferences across sessions in `~/.fixy/settings.json`. Settings are readable and writable both from the REPL (`@fixy /settings`) and by direct file edit. Each thread can override global settings for that session.
 
