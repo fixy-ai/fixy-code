@@ -685,15 +685,9 @@ export class FixyCommandRunner {
 
     if (adapterId === 'codex') {
       lines.push('');
-      lines.push('Effort (codex only):');
+      lines.push('Effort (optional):');
       lines.push('  [a] low   [b] medium   [c] high   [d] xhigh');
     }
-
-    lines.push('');
-    lines.push(
-      'Type model number + effort letter (e.g. 1d), or just number, or just letter.',
-    );
-    lines.push('Save globally? (y/n)');
 
     await this._appendSystemMessage(lines.join('\n'), ctx);
   }
