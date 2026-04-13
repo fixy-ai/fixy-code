@@ -60,6 +60,9 @@ export class FixyCommandRunner {
       case '/set':
         await this._handleSet(args, ctx);
         break;
+      case '/model':
+        await this._handleModel(args, ctx);
+        break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
     }
@@ -586,6 +589,180 @@ export class FixyCommandRunner {
       `${adapterId} args set to: ${flags} (this conversation only)`,
       ctx,
     );
+  }
+
+  private async _handleModel(args: string, ctx: FixyCommandContext): Promise<void> {
+    const trimmed = args.trim();
+
+    if (trimmed === '') {
+      await this._showModelStatus(ctx);
+      return;
+    }
+
+    if (!trimmed.startsWith('@')) {
+      await this._appendSystemMessage('usage: /model | /model @<adapter>', ctx);
+      return;
+    }
+
+    const parts = trimmed.split(/\s+/);
+    const adapterHandle = parts[0]!;
+    const adapterId = adapterHandle.slice(1);
+    const subCommand = parts[1];
+
+    if (subCommand === 'apply') {
+      await this._applyModelSelection(adapterId, parts.slice(2), ctx);
+      return;
+    }
+
+    await this._showModelSelectionUI(adapterId, ctx);
+  }
+
+  private async _showModelStatus(ctx: FixyCommandContext): Promise<void> {
+    const settings = await loadSettings();
+    const adapters = ctx.registry.list();
+    const lines: string[] = [];
+
+    for (const adapter of adapters) {
+      let currentModel: string;
+      if (adapter.id === 'claude') {
+        currentModel =
+          settings.claudeModel || (await adapter.getActiveModel?.()) || 'default';
+      } else if (adapter.id === 'codex') {
+        const model = settings.codexModel;
+        const effort = settings.codexEffort;
+        currentModel =
+          [model, effort].filter(Boolean).join(' ') ||
+          (await adapter.getActiveModel?.()) ||
+          'default';
+      } else if (adapter.id === 'gemini') {
+        currentModel =
+          settings.geminiModel || (await adapter.getActiveModel?.()) || 'default';
+      } else {
+        currentModel = (await adapter.getActiveModel?.()) || 'default';
+      }
+
+      lines.push(
+        `@${adapter.id.padEnd(8)} current: ${currentModel}  (change: /model @${adapter.id})`,
+      );
+    }
+
+    await this._appendSystemMessage(lines.join('\n'), ctx);
+  }
+
+  private async _showModelSelectionUI(
+    adapterId: string,
+    ctx: FixyCommandContext,
+  ): Promise<void> {
+    const adapter = ctx.registry.require(adapterId);
+
+    if (!adapter.listModels) {
+      await this._appendSystemMessage(`@${adapterId} does not support model listing`, ctx);
+      return;
+    }
+
+    const models = await adapter.listModels();
+    const lines: string[] = [`MODEL_SELECT @${adapterId}`, 'Models:'];
+
+    for (let i = 0; i < models.length; i++) {
+      const m = models[i]!;
+      const desc = m.description ? `  — ${m.description}` : '';
+      lines.push(`  [${i + 1}] ${m.id}${desc}`);
+    }
+
+    if (adapterId === 'codex') {
+      lines.push('');
+      lines.push('Effort (codex only):');
+      lines.push('  [a] low   [b] medium   [c] high   [d] xhigh');
+    }
+
+    lines.push('');
+    lines.push(
+      'Type model number + effort letter (e.g. 1d), or just number, or just letter.',
+    );
+    lines.push('Save globally? (y/n)');
+
+    await this._appendSystemMessage(lines.join('\n'), ctx);
+  }
+
+  private async _applyModelSelection(
+    adapterId: string,
+    selectionParts: string[],
+    ctx: FixyCommandContext,
+  ): Promise<void> {
+    const selection = selectionParts[0] ?? '';
+    const saveGlobal = (selectionParts[1] ?? 'y').toLowerCase() === 'y';
+
+    const adapter = ctx.registry.require(adapterId);
+    const models = adapter.listModels ? await adapter.listModels() : [];
+
+    const numMatch = /^(\d+)/.exec(selection);
+    const letterMatch = /([a-d])$/i.exec(selection);
+
+    const modelIndex = numMatch ? parseInt(numMatch[1]!, 10) - 1 : -1;
+    const effortLetter = letterMatch ? letterMatch[1]!.toLowerCase() : null;
+
+    const effortMap: Record<string, string> = {
+      a: 'low',
+      b: 'medium',
+      c: 'high',
+      d: 'xhigh',
+    };
+
+    const selectedModel = modelIndex >= 0 ? (models[modelIndex]?.id ?? null) : null;
+    const selectedEffort = effortLetter ? (effortMap[effortLetter] ?? null) : null;
+
+    if (selectedModel === null && selectedEffort === null) {
+      await this._appendSystemMessage(
+        'invalid selection — no model or effort chosen',
+        ctx,
+      );
+      return;
+    }
+
+    if (saveGlobal) {
+      const settings = await loadSettings();
+      if (adapterId === 'claude' && selectedModel) settings.claudeModel = selectedModel;
+      if (adapterId === 'codex') {
+        if (selectedModel) settings.codexModel = selectedModel;
+        if (selectedEffort) settings.codexEffort = selectedEffort;
+      }
+      if (adapterId === 'gemini' && selectedModel) settings.geminiModel = selectedModel;
+      await saveSettings(settings);
+
+      const descParts: string[] = [];
+      if (selectedModel) descParts.push(selectedModel);
+      if (selectedEffort) descParts.push(selectedEffort);
+      await this._appendSystemMessage(
+        `@${adapterId} model set globally: ${descParts.join(' ')}`,
+        ctx,
+      );
+    } else {
+      const existing = ctx.thread.adapterArgs?.[adapterId] ?? '';
+      let newArgs = existing
+        .replace(/--model\s+\S+/g, '')
+        .replace(/--reasoning-effort\s+\S+/g, '')
+        .trim();
+
+      if (selectedModel)
+        newArgs = `--model ${selectedModel}${newArgs ? ' ' + newArgs : ''}`;
+      if (selectedEffort)
+        newArgs = `${newArgs ? newArgs + ' ' : ''}--reasoning-effort ${selectedEffort}`;
+
+      ctx.thread.adapterArgs = { ...ctx.thread.adapterArgs, [adapterId]: newArgs };
+
+      const fresh = await ctx.store.getThread(ctx.thread.id, ctx.thread.projectRoot);
+      fresh.adapterArgs = { ...fresh.adapterArgs, [adapterId]: newArgs };
+      fresh.updatedAt = new Date().toISOString();
+      await this._persistThread(fresh);
+
+      const descParts: string[] = [];
+      if (selectedModel) descParts.push(selectedModel);
+      if (selectedEffort) descParts.push(selectedEffort);
+      await this._appendSystemMessage(
+        `@${adapterId} model set for this conversation: ${descParts.join(' ')}`,
+        ctx,
+      );
+    }
   }
 
   private _formatDisagreementPanel(d: DisagreementResult): string {

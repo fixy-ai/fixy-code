@@ -2,6 +2,7 @@
 
 import type {
   FixyAdapter,
+  FixyModelInfo,
   FixyProbeResult,
   FixyExecutionContext,
   FixyExecutionResult,
@@ -95,6 +96,14 @@ class GeminiAdapter implements FixyAdapter {
     return null;
   }
 
+  listModels(): Promise<FixyModelInfo[]> {
+    return Promise.resolve([
+      { id: 'gemini-2.5-pro', description: 'Most capable Gemini model' },
+      { id: 'gemini-2.0-flash', description: 'Fast and efficient' },
+      { id: 'gemini-1.5-pro', description: 'Previous generation pro' },
+    ]);
+  }
+
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
     const resolvedCommand = await resolveCommand('gemini');
     const env = buildInheritedEnv({});
@@ -108,6 +117,11 @@ class GeminiAdapter implements FixyAdapter {
 
     if (ctx.session) {
       args.push('--resume', ctx.session.sessionId);
+    }
+
+    // Inject model from settings if set
+    if (settings.geminiModel.trim().length > 0) {
+      args.push('--model', settings.geminiModel.trim());
     }
 
     args.push(...extraArgs);

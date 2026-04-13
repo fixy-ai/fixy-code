@@ -15,6 +15,10 @@ export interface FixySettings {
   claudeArgs: string;
   codexArgs: string;
   geminiArgs: string;
+  claudeModel: string;
+  codexModel: string;
+  codexEffort: string;
+  geminiModel: string;
 }
 
 export const defaultSettings: FixySettings = {
@@ -29,6 +33,10 @@ export const defaultSettings: FixySettings = {
   claudeArgs: '',
   codexArgs: '',
   geminiArgs: '',
+  claudeModel: '',
+  codexModel: '',
+  codexEffort: '',
+  geminiModel: '',
 };
 
 export async function loadSettings(): Promise<FixySettings> {

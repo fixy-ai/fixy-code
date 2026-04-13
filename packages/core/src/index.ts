@@ -9,6 +9,7 @@ export type {
   FixyInvocationMeta,
   FixyAdapter,
   FixyProbeResult,
+  FixyModelInfo,
 } from './adapter.js';
 
 export {

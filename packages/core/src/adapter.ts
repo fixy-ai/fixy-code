@@ -67,6 +67,11 @@ export interface FixyInvocationMeta {
   env: Record<string, string>; // already redacted of secrets by the adapter
 }
 
+export interface FixyModelInfo {
+  id: string;
+  description?: string;
+}
+
 export interface FixyAdapter {
   /** Stable id, matches the mention handle without '@'. */
   readonly id: string;
@@ -78,6 +83,8 @@ export interface FixyAdapter {
   execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult>;
   /** Return the currently active model identifier (e.g. "claude-sonnet-4-5"), or null. */
   getActiveModel?(): Promise<string | null>;
+  /** Return the list of available models for this adapter. */
+  listModels?(): Promise<FixyModelInfo[]>;
 }
 
 export interface FixyProbeResult {

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type {
   FixyAdapter,
+  FixyModelInfo,
   FixyProbeResult,
   FixyExecutionContext,
   FixyExecutionResult,
@@ -99,6 +100,14 @@ class ClaudeAdapter implements FixyAdapter {
     return null;
   }
 
+  listModels(): Promise<FixyModelInfo[]> {
+    return Promise.resolve([
+      { id: 'claude-opus-4-6', description: 'Most capable — best for complex tasks' },
+      { id: 'claude-sonnet-4-6', description: 'Balanced speed and intelligence' },
+      { id: 'claude-haiku-4-5', description: 'Fastest and most compact' },
+    ]);
+  }
+
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
     const args: string[] = ['--print', '--output-format', 'text'];
 
@@ -108,6 +117,12 @@ class ClaudeAdapter implements FixyAdapter {
 
     // Extra args: thread override takes priority over global setting
     const settings = await loadSettings();
+
+    // Inject model from settings if set (extraArgs can still override via --model in the string)
+    if (settings.claudeModel.trim().length > 0) {
+      args.push('--model', settings.claudeModel.trim());
+    }
+
     const extraArgsStr = ctx.adapterArgs?.['claude'] ?? settings.claudeArgs;
     if (extraArgsStr.trim().length > 0) {
       args.push(...extraArgsStr.trim().split(/\s+/));

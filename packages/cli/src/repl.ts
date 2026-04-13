@@ -27,6 +27,7 @@ const MENU_RESET = '\x1b[0m';
 const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/all',      desc: 'run collaboration engine on all agents' },
   { name: '/worker',   desc: 'set the worker adapter for this thread' },
+  { name: '/model',    desc: 'view or change adapter models' },
   { name: '/settings', desc: 'view or update global settings' },
   { name: '/reset',    desc: 'abort current turn and reset agent sessions' },
   { name: '/status',   desc: 'show adapter and session status' },
@@ -148,6 +149,26 @@ export async function startRepl(params: ReplParams): Promise<void> {
       rl.once('close', () => resolve(null));
     });
 
+  const resolveModelChoice = async (msgContent: string): Promise<string | null> => {
+    // Extract adapter id from MODEL_SELECT @<id>
+    const adapterMatch = msgContent.match(/^MODEL_SELECT @(\w+)/);
+    const adapterId = adapterMatch?.[1] ?? thread.workerModel;
+
+    while (true) {
+      const raw = await askChoice('\x1b[38;5;105m[model]>\x1b[0m ');
+      if (raw === null) return null;
+      const choice = raw.trim();
+      if (choice.length === 0) continue;
+
+      // Ask save preference
+      const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ');
+      if (saveRaw === null) return null;
+      const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
+
+      return `@fixy /model @${adapterId} apply ${choice} ${save}`;
+    }
+  };
+
   const resolveDisagreementChoice = async (msgContent: string): Promise<string | null> => {
     const matchA = msgContent.match(/\[1\] Go with @(\w+)/);
     const matchB = msgContent.match(/\[2\] Go with @(\w+)/);
@@ -201,6 +222,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
         if (lastMsg.content.startsWith('AGENTS DISAGREE')) {
           const choiceInput = await resolveDisagreementChoice(lastMsg.content);
+          if (choiceInput !== null) {
+            await runTurn(choiceInput);
+            return;
+          }
+        }
+
+        if (lastMsg.content.startsWith('MODEL_SELECT')) {
+          const choiceInput = await resolveModelChoice(lastMsg.content);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
             return;

@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import type {
   FixyAdapter,
+  FixyModelInfo,
   FixyProbeResult,
   FixyExecutionContext,
   FixyExecutionResult,
@@ -95,6 +96,31 @@ class CodexAdapter implements FixyAdapter {
     return null;
   }
 
+  async listModels(): Promise<FixyModelInfo[]> {
+    const models: FixyModelInfo[] = [
+      { id: 'gpt-5.4', description: 'Latest GPT-5.4' },
+      { id: 'gpt-4o', description: 'GPT-4o — fast and capable' },
+      { id: 'gpt-4o-mini', description: 'GPT-4o mini — lightweight' },
+    ];
+
+    // Try to read current model from ~/.codex/config.toml and surface it first if not in list
+    try {
+      const configPath = path.join(os.homedir(), '.codex', 'config.toml');
+      const raw = await fs.readFile(configPath, 'utf8');
+      const modelMatch = /^model\s*=\s*"([^"]+)"/m.exec(raw);
+      if (modelMatch) {
+        const currentModel = modelMatch[1]!;
+        if (!models.some((m) => m.id === currentModel)) {
+          models.unshift({ id: currentModel, description: 'current (from config.toml)' });
+        }
+      }
+    } catch {
+      // Config not found — use base list
+    }
+
+    return models;
+  }
+
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
     const resolvedCommand = await resolveCommand('codex');
     const env = buildInheritedEnv({});
@@ -103,6 +129,15 @@ class CodexAdapter implements FixyAdapter {
     const settings = await loadSettings();
     const extraArgsStr = ctx.adapterArgs?.['codex'] ?? settings.codexArgs;
     const extraArgs = extraArgsStr.trim().length > 0 ? extraArgsStr.trim().split(/\s+/) : [];
+
+    // Inject model/effort from settings if set
+    const modelArgs: string[] = [];
+    if (settings.codexModel.trim().length > 0) {
+      modelArgs.push('--model', settings.codexModel.trim());
+    }
+    if (settings.codexEffort.trim().length > 0) {
+      modelArgs.push('--reasoning-effort', settings.codexEffort.trim());
+    }
 
     let args: string[];
 
@@ -115,6 +150,7 @@ class CodexAdapter implements FixyAdapter {
         '--json',
         '--skip-git-repo-check',
         '--full-auto',
+        ...modelArgs,
         ...extraArgs,
         ctx.prompt,
       ];
@@ -125,6 +161,7 @@ class CodexAdapter implements FixyAdapter {
         '--json',
         '--skip-git-repo-check',
         '--full-auto',
+        ...modelArgs,
         ...extraArgs,
         ctx.prompt,
       ];
