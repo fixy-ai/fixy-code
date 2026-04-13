@@ -11,6 +11,7 @@ import type { LocalThreadStore } from './store.js';
 import type { FixyMessage, FixyThread } from './thread.js';
 import type { WorktreeManager } from './worktree.js';
 import { getThreadFile } from './paths.js';
+import { loadAuth, clearAuth, runDeviceAuthFlow } from './auth.js';
 
 export interface FixyCommandContext {
   thread: FixyThread;
@@ -62,6 +63,15 @@ export class FixyCommandRunner {
         break;
       case '/model':
         await this._handleModel(args, ctx);
+        break;
+      case '/login':
+        await this._handleLogin(ctx);
+        break;
+      case '/logout':
+        await this._handleLogout(ctx);
+        break;
+      case '/new':
+        await this._handleNew(ctx);
         break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
@@ -808,6 +818,88 @@ export class FixyCommandRunner {
       '',
       'Type 1, 2, or 3 to continue.',
     ].join('\n');
+  }
+
+  private async _handleLogin(ctx: FixyCommandContext): Promise<void> {
+    const existing = await loadAuth();
+    if (existing) {
+      await this._appendSystemMessage(
+        `Already signed in as ${existing.email} (${existing.plan} plan).\nUse /logout first to switch accounts.`,
+        ctx,
+      );
+      return;
+    }
+
+    ctx.onLog('stdout', '\x1b[38;5;105mStarting sign-in…\x1b[0m\n');
+
+    try {
+      const auth = await runDeviceAuthFlow(
+        (msg) => ctx.onLog('stdout', msg),
+        ctx.signal,
+      );
+      if (auth) {
+        await this._appendSystemMessage(
+          `Signed in as ${auth.email} (${auth.plan} plan). Welcome!`,
+          ctx,
+        );
+      } else {
+        await this._appendSystemMessage(
+          'Sign-in cancelled or expired. Try /login again.',
+          ctx,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this._appendSystemMessage(`Sign-in failed: ${msg}`, ctx);
+    }
+  }
+
+  private async _handleLogout(ctx: FixyCommandContext): Promise<void> {
+    const existing = await loadAuth();
+    if (!existing) {
+      await this._appendSystemMessage('Not signed in.', ctx);
+      return;
+    }
+    await clearAuth();
+    await this._appendSystemMessage(
+      `Signed out from ${existing.email}. You are now using the free plan.`,
+      ctx,
+    );
+  }
+
+  private async _handleNew(ctx: FixyCommandContext): Promise<void> {
+    const auth = await loadAuth();
+    const plan = auth?.plan ?? 'free';
+
+    // Plan-based session limits
+    const MAX_SESSIONS: Record<string, number> = {
+      free: 1,
+      starter: 3,
+      pro: 10,
+      team: 50,
+    };
+    const limit = MAX_SESSIONS[plan] ?? 1;
+
+    // Count existing threads for this project
+    const threads = await ctx.store.listThreads(ctx.thread.projectRoot);
+    if (threads.length >= limit) {
+      const upgrade = plan === 'free'
+        ? '\nSign in with /login or upgrade at https://fixy.ai/code'
+        : '\nUpgrade your plan at https://fixy.ai/code';
+      await this._appendSystemMessage(
+        `Session limit reached (${threads.length}/${limit} on ${plan} plan).${upgrade}`,
+        ctx,
+      );
+      return;
+    }
+
+    const newThread = await ctx.store.createThread(ctx.thread.projectRoot);
+    newThread.workerModel = ctx.thread.workerModel;
+
+    await this._appendSystemMessage(
+      `NEW_THREAD\nNew session created: ${newThread.id}\nSwitch to it with: fixy --thread ${newThread.id}`,
+      ctx,
+    );
   }
 
   private async _handleBare(prompt: string, ctx: FixyCommandContext): Promise<void> {

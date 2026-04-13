@@ -48,4 +48,7 @@ export type { DisagreementResult } from './disagreement.js';
 export type { FixySettings } from './settings.js';
 export { defaultSettings, loadSettings, saveSettings } from './settings.js';
 
-export { settingsPath } from './paths.js';
+export { settingsPath, authPath } from './paths.js';
+
+export type { FixyAuth, DeviceCodeResponse, PollResult } from './auth.js';
+export { loadAuth, saveAuth, clearAuth, requestDeviceCode, pollDeviceAuth, runDeviceAuthFlow } from './auth.js';

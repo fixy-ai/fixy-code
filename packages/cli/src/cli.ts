@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, defaultSettings, settingsPath } from '@fixy/core';
+import { LocalThreadStore, AdapterRegistry, TurnController, WorktreeManager, loadSettings, saveSettings, defaultSettings, settingsPath, runDeviceAuthFlow, loadAuth } from '@fixy/core';
 import { createClaudeAdapter } from '@fixy/claude-adapter';
 import { createCodexAdapter } from '@fixy/codex-adapter';
 import { createGeminiAdapter } from '@fixy/gemini-adapter';
@@ -104,6 +104,7 @@ async function runOnboarding(registry: AdapterRegistry): Promise<void> {
   const RESET = '\x1b[0m';
 
   process.stdout.write(`\n${BOLD}${INDIGO}Welcome to Fixy!${RESET}\n\n`);
+  process.stdout.write(`${DIM}For more info: https://fixy.ai/code${RESET}\n\n`);
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -132,8 +133,31 @@ async function runOnboarding(registry: AdapterRegistry): Promise<void> {
       ask();
     });
 
-  // Step 1 — Claude permissions
-  process.stdout.write(`${BOLD}Step 1 — Claude permissions${RESET}\n`);
+  // Step 0 — Free or Sign In
+  process.stdout.write(`${BOLD}Step 1 — Choose your plan${RESET}\n`);
+  process.stdout.write(`  ${INDIGO}1${RESET}  Free — start using Fixy right away\n`);
+  process.stdout.write(`  ${INDIGO}2${RESET}  Sign In — unlock more features\n\n`);
+
+  const planChoice = await askNumber(`${INDIGO}Choose [1-2]:${RESET} `, 2);
+
+  if (planChoice === 2) {
+    process.stdout.write(`\n${DIM}Starting sign-in…${RESET}\n`);
+    try {
+      const auth = await runDeviceAuthFlow((msg: string) => process.stdout.write(msg));
+      if (auth) {
+        process.stdout.write(`\n${INDIGO}✓${RESET}  Signed in as ${auth.email} (${auth.plan} plan)\n\n`);
+      } else {
+        process.stdout.write(`\n${DIM}Sign-in skipped. You can sign in later with /login${RESET}\n\n`);
+      }
+    } catch {
+      process.stdout.write(`\n${DIM}Sign-in failed. You can try again later with /login${RESET}\n\n`);
+    }
+  } else {
+    process.stdout.write(`\n${DIM}Using free plan. Sign in anytime with /login${RESET}\n\n`);
+  }
+
+  // Step 2 — Claude permissions
+  process.stdout.write(`${BOLD}Step 2 — Claude permissions${RESET}\n`);
   process.stdout.write(
     `${DIM}By default, Claude asks for your approval before making file changes.\n` +
     `You can turn this off so Claude works without interruptions.\n` +
@@ -143,7 +167,7 @@ async function runOnboarding(registry: AdapterRegistry): Promise<void> {
 
   // Step 2 — default worker
   const adapterList = registry.list();
-  process.stdout.write(`\n${BOLD}Step 2 — Default worker${RESET}\n`);
+  process.stdout.write(`\n${BOLD}Step 3 — Default worker${RESET}\n`);
   process.stdout.write(
     `${DIM}Your worker is the AI agent that responds when you type a message\n` +
     `without an @mention. You can change it any time with: @fixy /worker <agent>${RESET}\n\n`,
@@ -164,7 +188,7 @@ async function runOnboarding(registry: AdapterRegistry): Promise<void> {
   if (typeof chosenAdapter.listModels === 'function') {
     const modelList = await chosenAdapter.listModels();
     if (modelList.length > 0) {
-      process.stdout.write(`\n${BOLD}Step 3 — ${chosenAdapter.name} model${RESET}\n`);
+      process.stdout.write(`\n${BOLD}Step 4 — ${chosenAdapter.name} model${RESET}\n`);
       process.stdout.write(`${DIM}Which model should @${chosenWorker} use?${RESET}\n\n`);
       modelList.forEach((m, i) => {
         const desc = m.description ? `  ${DIM}${m.description}${RESET}` : '';
@@ -256,6 +280,9 @@ async function main(): Promise<void> {
   // Start update check early so the network request runs while we render the panel.
   const updateCheck = skipUpdateCheck ? Promise.resolve() : checkForUpdate(version);
 
+  const auth = await loadAuth();
+  const authInfo = auth ? { email: auth.email, plan: auth.plan } : null;
+
   if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');
 
   process.stdout.write(
@@ -266,6 +293,7 @@ async function main(): Promise<void> {
       projectRoot,
       thread.id,
       currentWorker,
+      authInfo,
     ) + '\n',
   );
 

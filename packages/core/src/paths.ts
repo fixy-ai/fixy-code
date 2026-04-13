@@ -46,3 +46,8 @@ export function getWorktreesDir(threadId: string): string {
 export function settingsPath(): string {
   return join(getFixyHome(), 'settings.json');
 }
+
+/** Returns the path to the auth token file (~/.fixy/auth.json). */
+export function authPath(): string {
+  return join(getFixyHome(), 'auth.json');
+}

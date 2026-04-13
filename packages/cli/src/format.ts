@@ -32,6 +32,7 @@ export function startupPanel(
   projectRoot: string,
   threadId: string,
   worker: string,
+  authInfo?: { email: string; plan: string } | null,
 ): string {
   const cols = Math.max(Math.min(process.stdout.columns ?? 80, 80), 52);
   const innerWidth = cols - 2;
@@ -53,6 +54,9 @@ export function startupPanel(
     `${DIM}Worker: @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
     `${DIM}Directory: ${dirDisplay}${RESET}`,
     `${DIM}Thread: ${threadId}${RESET}`,
+    authInfo
+      ? `${DIM}Account: ${authInfo.email} (${authInfo.plan})${RESET}`
+      : `${DIM}Account: free · /login to sign in${RESET}`,
   ];
 
   const visibleLen = (s: string): number => s.replace(/\x1b\[[0-9;]*m/g, '').length;
