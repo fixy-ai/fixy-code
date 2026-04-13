@@ -757,25 +757,36 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ---
 
-### Step 15 — Context Summarization
+### Step 15 — `/compact` Command (Manual Context Compaction)
 
 **Status:** 🔲 PENDING
 
-**Goal:** When a thread grows long enough to risk hitting adapter token limits, automatically summarize older turns and replace them with a compact digest — without losing any information on disk.
+**Goal:** Let the user manually compact the current thread's history into a short summary when the conversation gets long. Never automatic — always user-triggered. Never destructive — full history stays on disk untouched.
 
-**Why:** Both the Claude and GPT-5.4 design discussions flagged context drift as the #1 hard problem. "At some point you hit token limits and the agents start losing track of earlier decisions." This step is what separates a tool that works for 10 exchanges from one that works for 100.
+**Why:** Fixy sends the full thread history to agents on every turn. Long conversations slow agents down and risk hitting their context limits. `/compact` gives the user a clean way to reset the context without losing anything.
 
-**Design:**
-- Configurable token budget per turn (default: 40,000 tokens, rough heuristic by character count)
-- When thread messages exceed the budget, an out-of-band summarization call is made to the current worker adapter: "Summarize the following conversation history in under 500 words, preserving all decisions, file changes, and open questions."
-- The summary replaces the oldest N messages in the `FixyExecutionContext` prompt that gets sent to adapters — the full `thread.messages` array on disk is NEVER mutated
-- Summary stored as a `role: 'system'` message with `summarized: true` flag in the in-memory context only
+**How it works:**
+1. User runs `/compact`, `/compact @claude`, or `@claude /compact`
+2. Fixy sends all current thread messages to the chosen agent (default: current worker): *"Summarize this conversation in under 300 words. Preserve all decisions, file changes, and open questions."*
+3. Agent returns a summary
+4. Fixy appends a special `role: 'system'` message with `compacted: true` flag and the summary text
+5. From that point on, Fixy sends only: the compact summary + messages after the compact point — not the full history
+6. Full history is always kept on disk — `/compact` never deletes anything
+7. User sees a dim notice: `[context compacted — N messages summarized]`
 
-**Files to create/modify:**
-- `packages/core/src/summarizer.ts` (new) — `summarizeThread(messages, worker, ctx)` → trimmed message array
-- `packages/core/src/turn.ts` (update) — call summarizer before building adapter prompt when message count exceeds threshold
-- `packages/core/src/thread.ts` (update) — add optional `summarized: boolean` flag to `FixyMessage`
-- `packages/core/src/settings.ts` (update) — add `contextBudgetChars: number` setting (default: 160_000)
+**Commands:**
+```
+/compact              ← compact using current worker
+/compact @claude      ← use Claude to summarize
+/compact @codex       ← use Codex to summarize
+@claude /compact      ← same as /compact @claude
+```
+
+**Files to modify:**
+- `packages/core/src/thread.ts` — add optional `compacted?: boolean` flag to `FixyMessage`
+- `packages/core/src/fixy-commands.ts` — wire `/compact` command handler
+- `packages/core/src/turn.ts` — when building message list for adapter, if a `compacted: true` message exists, send only that message + everything after it
+- `packages/core/src/__tests__/compact.test.ts` (new) — tests for compact command and message trimming
 
 **Acceptance:**
 - Threads with 50+ long messages still produce coherent agent responses
@@ -817,7 +828,7 @@ The collaboration engine is implemented inline in `/packages/core/src/fixy-comma
 
 ### Step 17 — Red Room & Disagreement Engine
 
-**Status:** 🔲 PENDING
+**Status:** ✅ DONE
 
 **Goal:** Add an explicit adversarial collaboration mode (`red_room`) where agents are forced to challenge each other's proposals. When agents disagree, Fixy surfaces a structured **choice panel** so the user can decide which approach wins — or ask the agents to find a middle ground.
 
@@ -941,6 +952,51 @@ User types `1`, `2`, or `3`. Choice is appended to the thread and the next turn 
 - Pressing ESC during a running turn cancels it cleanly with `⊘ cancelled` in indigo
 - Pressing ESC while typing clears the line, no exit
 - Every agent response is prefixed with `@claude` / `@codex` in indigo before its text
+- All existing tests still pass
+
+---
+
+### Step 20 — Per-Adapter Extra Args (Provider Passthrough)
+
+**Status:** 🔲 PENDING
+
+**Goal:** Let users pass any provider CLI flags directly through Fixy without Fixy needing to know what they mean. User uses the provider's own flag names. Fixy just appends them. Zero maintenance as providers add new flags.
+
+**Default: always empty — no extra args added unless user explicitly sets them.**
+
+**User-facing commands:**
+```
+@fixy /settings set claudeArgs --dangerously-skip-permissions   ← global default for all sessions
+@fixy /settings set codexArgs --no-sandbox
+@fixy /set claude --dangerously-skip-permissions                ← this conversation only (thread override)
+@fixy /set codex --full-auto                                    ← this conversation only
+```
+
+**How it works:**
+- Base args Fixy always sends: `claude --print --output-format text` (fixed, never changes)
+- User extra args appended after: `claude --print --output-format text --dangerously-skip-permissions`
+- Fixy never interprets, validates, or documents the extra args — they are the provider's business
+- Thread-level `/set` overrides global `/settings set` for that conversation only
+
+**Settings schema additions:**
+```ts
+claudeArgs: string;   // default: ""  (space-separated flags)
+codexArgs: string;    // default: ""
+geminiArgs: string;   // default: ""
+```
+
+**Files to modify:**
+- `packages/core/src/settings.ts` — add `claudeArgs`, `codexArgs`, `geminiArgs` (default `""`)
+- `packages/core/src/fixy-commands.ts` — wire `/set <adapterId> <flags>` as thread-level override; store in `thread` object
+- `packages/core/src/thread.ts` — add optional `adapterArgs: Record<string, string>` to `FixyThread`
+- `packages/claude-adapter/src/index.ts` — read `claudeArgs` from settings + thread override, split and append to args
+- `packages/codex-adapter/src/index.ts` — same for `codexArgs`
+
+**Acceptance:**
+- Default: `claude --print --output-format text` — no extra flags ever added unless user sets them
+- `@fixy /settings set claudeArgs --dangerously-skip-permissions` → persists globally, all future sessions use it
+- `@fixy /set claude --dangerously-skip-permissions` → applies to current conversation only, not saved globally
+- Thread override takes priority over global setting
 - All existing tests still pass
 
 ---
