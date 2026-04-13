@@ -41,6 +41,9 @@ export type { FixyCommandContext } from './fixy-commands.js';
 
 export { slugify } from './slugify.js';
 
+export { detectDisagreement } from './disagreement.js';
+export type { DisagreementResult } from './disagreement.js';
+
 export type { FixySettings } from './settings.js';
 export { defaultSettings, loadSettings, saveSettings } from './settings.js';
 

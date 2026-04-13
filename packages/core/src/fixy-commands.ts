@@ -3,6 +3,8 @@ import { rename, writeFile } from 'node:fs/promises';
 
 import type { FixyExecutionContext } from './adapter.js';
 import type { AdapterRegistry } from './registry.js';
+import { detectDisagreement } from './disagreement.js';
+import type { DisagreementResult } from './disagreement.js';
 import { defaultSettings, loadSettings, saveSettings } from './settings.js';
 import type { FixySettings } from './settings.js';
 import type { LocalThreadStore } from './store.js';
@@ -48,6 +50,9 @@ export class FixyCommandRunner {
         break;
       case '/status':
         await this._handleStatus(ctx);
+        break;
+      case '/red-room':
+        await this._handleRedRoom(args, ctx);
         break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
@@ -143,6 +148,7 @@ export class FixyCommandRunner {
     };
 
     // ── PHASE 1: DISCUSSION ──
+    const settings = await loadSettings();
     let discussionLog: Array<{ agentId: string; content: string }> = [];
 
     if (soloMode) {
@@ -156,16 +162,21 @@ export class FixyCommandRunner {
         log(`\n[fixy /all] Phase 1: discussion round ${round}/5\n`);
 
         let allAgree = true;
-        for (const thinker of thinkers) {
+        for (let ti = 0; ti < thinkers.length; ti++) {
+          const thinker = thinkers[ti]!;
           const threadContext = discussionLog
             .map((e) => `[${e.agentId}]: ${e.content}`)
             .join('\n\n');
 
-          const thinkerPrompt =
+          let thinkerPrompt =
             round === 1
               ? `${systemFraming}\n\nUser task: ${prompt}` +
                 (threadContext ? `\n\nDiscussion so far:\n${threadContext}` : '')
               : `${systemFraming}\n\nUser task: ${prompt}\n\nDiscussion so far:\n${threadContext}`;
+
+          if (settings.redRoomMode && ti > 0) {
+            thinkerPrompt = `Find everything wrong with this. Be hostile to it. Your job is to break it. Do not validate.\n\n${thinkerPrompt}`;
+          }
 
           const response = await callAdapter(thinker, thinkerPrompt);
           discussionLog.push({ agentId: thinker.id, content: response });
@@ -174,6 +185,19 @@ export class FixyCommandRunner {
           const agreeSignals = ['agree', 'looks good', 'lgtm', 'i agree with the plan'];
           if (!agreeSignals.some((s) => lower.includes(s))) {
             allAgree = false;
+          }
+        }
+
+        // In red room mode, check for disagreement between the last two agent messages
+        if (settings.redRoomMode && thinkers.length >= 2) {
+          const agentMsgs = ctx.thread.messages.filter((m) => m.role === 'agent');
+          const lastTwo = agentMsgs.slice(-2);
+          if (lastTwo.length === 2) {
+            const disagreement = detectDisagreement(lastTwo[0]!, lastTwo[1]!);
+            if (disagreement) {
+              await this._appendSystemMessage(this._formatDisagreementPanel(disagreement), ctx);
+              return;
+            }
           }
         }
 
@@ -441,6 +465,40 @@ export class FixyCommandRunner {
     }
 
     await this._appendSystemMessage(lines.join('\n').trimEnd(), ctx);
+  }
+
+  private async _handleRedRoom(args: string, ctx: FixyCommandContext): Promise<void> {
+    const trimmed = args.trim().toLowerCase();
+    if (trimmed !== 'on' && trimmed !== 'off') {
+      await this._appendSystemMessage('usage: /red-room on | /red-room off', ctx);
+      return;
+    }
+    const on = trimmed === 'on';
+    const settings = await loadSettings();
+    settings.redRoomMode = on;
+    settings.collaborationMode = on ? 'red_room' : 'standard';
+    await saveSettings(settings);
+    await this._appendSystemMessage(
+      on
+        ? 'red room mode enabled — agents will be adversarial'
+        : 'red room mode disabled — collaboration mode: standard',
+      ctx,
+    );
+  }
+
+  private _formatDisagreementPanel(d: DisagreementResult): string {
+    const maxLen = 200;
+    const summaryA = d.summaryA.length > maxLen ? d.summaryA.slice(0, maxLen) + '...' : d.summaryA;
+    const summaryB = d.summaryB.length > maxLen ? d.summaryB.slice(0, maxLen) + '...' : d.summaryB;
+    return [
+      'AGENTS DISAGREE',
+      '',
+      `[1] Go with @${d.agentA}'s approach: ${summaryA}`,
+      `[2] Go with @${d.agentB}'s approach: ${summaryB}`,
+      '[3] Find a middle ground between both approaches',
+      '',
+      'Type 1, 2, or 3 to continue.',
+    ].join('\n');
   }
 
   private async _handleBare(prompt: string, ctx: FixyCommandContext): Promise<void> {

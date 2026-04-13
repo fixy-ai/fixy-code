@@ -142,32 +142,37 @@ export async function startRepl(params: ReplParams): Promise<void> {
       rl.once('close', () => resolve(null));
     });
 
-  while (true) {
-    const line = await ask();
+  const askChoice = (promptText: string): Promise<string | null> =>
+    new Promise((resolve) => {
+      rl.question(promptText, (answer) => resolve(answer.trim()));
+      rl.once('close', () => resolve(null));
+    });
 
-    if (line === null) {
-      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
-      break;
+  const resolveDisagreementChoice = async (msgContent: string): Promise<string | null> => {
+    const matchA = msgContent.match(/\[1\] Go with @(\w+)/);
+    const matchB = msgContent.match(/\[2\] Go with @(\w+)/);
+    const agentA = matchA?.[1] ?? thread.workerModel;
+    const agentB = matchB?.[1] ?? thread.workerModel;
+
+    while (true) {
+      const choice = await askChoice('\x1b[38;5;105m[1/2/3]>\x1b[0m ');
+      if (choice === null) return null;
+      if (choice === '1') return `@fixy Go with @${agentA}'s approach`;
+      if (choice === '2') return `@fixy Go with @${agentB}'s approach`;
+      if (choice === '3')
+        return `@${agentA} @${agentB} Find a middle ground between both approaches`;
+      process.stdout.write('Please type 1, 2, or 3\n');
     }
+  };
 
-    const input = line.trim();
-    if (input.length === 0) continue;
-
-    if (input === '/quit' || input === '/exit') {
-      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
-      break;
-    }
-
+  const runTurn = async (input: string): Promise<void> => {
     turnAbort = new AbortController();
     turnActive = true;
-
     spinner = createSpinner();
 
     try {
       thread = await store.getThread(thread.id, thread.projectRoot);
-
       spinner.start('thinking...');
-
       let headerPrinted = false;
 
       await turnController.runTurn({
@@ -193,6 +198,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {
         process.stdout.write(`\n${lastMsg.content}\n`);
+
+        if (lastMsg.content.startsWith('AGENTS DISAGREE')) {
+          const choiceInput = await resolveDisagreementChoice(lastMsg.content);
+          if (choiceInput !== null) {
+            await runTurn(choiceInput);
+            return;
+          }
+        }
       }
 
       if (lastMsg && lastMsg.warnings.length > 0) {
@@ -201,7 +214,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
         }
       }
     } catch (err) {
-      if (turnAbort.signal.aborted) {
+      if (turnAbort?.signal.aborted) {
         // cancelled by Ctrl-C, already handled
       } else {
         const msg = err instanceof Error ? err.message : String(err);
@@ -214,6 +227,25 @@ export async function startRepl(params: ReplParams): Promise<void> {
       turnAbort = null;
       process.stdout.write('\n');
     }
+  };
+
+  while (true) {
+    const line = await ask();
+
+    if (line === null) {
+      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
+      break;
+    }
+
+    const input = line.trim();
+    if (input.length === 0) continue;
+
+    if (input === '/quit' || input === '/exit') {
+      process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
+      break;
+    }
+
+    await runTurn(input);
   }
 
   rl.close();
