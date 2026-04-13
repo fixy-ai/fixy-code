@@ -304,34 +304,42 @@ export async function startRepl(params: ReplParams): Promise<void> {
     const adapterMatch = msgContent.match(/^MODEL_SELECT @(\w+)/);
     const adapterId = adapterMatch?.[1] ?? thread.workerModel;
 
-    // Parse model ids from numbered list in the message
+    // Parse model numbers from list
     const modelMatches = [...msgContent.matchAll(/\[(\d+)\]\s+([\w.-]+)/g)];
-    const modelIds = modelMatches.map((m) => m[2] ?? '');
-    const range = modelIds.length > 0 ? `1-${modelIds.length}` : 'model';
-    const prompt = modelIds.length > 0
-      ? `\x1b[38;5;105m[${range}]>\x1b[0m `
-      : `\x1b[38;5;105m[model]>\x1b[0m `;
+    const modelCount = modelMatches.length;
+    const hasEffort = msgContent.includes('Effort (optional)');
 
-    while (true) {
-      const raw = await askChoice(prompt, signal);
-      if (raw === null) return null;
-      const choice = raw.trim();
-      if (choice.length === 0) continue;
+    if (modelCount === 0) return null;
 
-      // Resolve number to model id if applicable
-      const n = parseInt(choice, 10);
-      const resolvedModel =
-        modelIds.length > 0 && n >= 1 && n <= modelIds.length
-          ? modelIds[n - 1] ?? choice
-          : choice;
+    // Step 1: Pick model number
+    const modelPrompt = `\x1b[38;5;105m[1-${modelCount}]>\x1b[0m `;
+    const pickModel = async (): Promise<string | null> => {
+      for (;;) {
+        const raw = await askChoice(modelPrompt, signal);
+        if (raw === null) return null;
+        const n = parseInt(raw.trim(), 10);
+        if (n >= 1 && n <= modelCount) return String(n);
+        process.stdout.write(`Please type a number between 1-${modelCount}\n`);
+      }
+    };
+    const modelNum = await pickModel();
+    if (modelNum === null) return null;
 
-      // Ask save preference
-      const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ', signal);
-      if (saveRaw === null) return null;
-      const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
-
-      return `@fixy /model @${adapterId} apply ${resolvedModel} ${save}`;
+    // Step 2: Pick effort (Codex only)
+    let effortLetter = '';
+    if (hasEffort) {
+      const effortRaw = await askChoice('\x1b[38;5;105m[a-d] effort (Enter to skip)>\x1b[0m ', signal);
+      if (effortRaw === null) return null;
+      const letter = effortRaw.trim().toLowerCase();
+      if (/^[a-d]$/.test(letter)) effortLetter = letter;
     }
+
+    // Step 3: Save globally?
+    const saveRaw = await askChoice('\x1b[38;5;105mSave globally? (y/n)>\x1b[0m ', signal);
+    if (saveRaw === null) return null;
+    const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
+
+    return `@fixy /model @${adapterId} apply ${modelNum}${effortLetter} ${save}`;
   };
 
   const resolveAdapterToggle = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
