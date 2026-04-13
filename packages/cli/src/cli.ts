@@ -30,6 +30,36 @@ async function findGitRoot(dir: string): Promise<string | null> {
   }
 }
 
+function isNewerVersion(remote: string, local: string): boolean {
+  const parse = (v: string): number[] => v.split('.').map(Number);
+  const [rMaj = 0, rMin = 0, rPat = 0] = parse(remote);
+  const [lMaj = 0, lMin = 0, lPat = 0] = parse(local);
+  if (rMaj !== lMaj) return rMaj > lMaj;
+  if (rMin !== lMin) return rMin > lMin;
+  return rPat > lPat;
+}
+
+async function checkForUpdate(localVersion: string): Promise<void> {
+  const INDIGO = '\x1b[38;5;105m';
+  const RESET = '\x1b[0m';
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 3000),
+    );
+    const fetched = fetch('https://registry.npmjs.org/@fixy/code/latest').then(
+      (r) => r.json() as Promise<{ version: string }>,
+    );
+    const data = await Promise.race([fetched, timeout]);
+    if (isNewerVersion(data.version, localVersion)) {
+      process.stdout.write(
+        `${INDIGO}  ℹ  fixy v${data.version} available → npm install -g @fixy/code${RESET}\n`,
+      );
+    }
+  } catch {
+    // fetch failed, timed out, or versions match — stay silent
+  }
+}
+
 async function main(): Promise<void> {
   const gitRoot = await findGitRoot(process.cwd());
   if (!gitRoot) {
@@ -74,6 +104,9 @@ async function main(): Promise<void> {
     ? await store.getThread(threadId, projectRoot)
     : await store.createThread(projectRoot);
 
+  // Start update check early so the network request runs while we render the panel.
+  const updateCheck = checkForUpdate(version);
+
   if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');
 
   process.stdout.write(
@@ -85,6 +118,9 @@ async function main(): Promise<void> {
       thread.id,
     ) + '\n',
   );
+
+  // Await here — at most 3 s, usually near-instant because the fetch already started.
+  await updateCheck;
 
   await startRepl({ thread, store, registry, worktreeManager, turnController, version, projectRoot, models });
 }
