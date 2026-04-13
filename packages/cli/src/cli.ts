@@ -64,16 +64,18 @@ async function checkForUpdate(localVersion: string): Promise<void> {
       process.stdin.setRawMode(true);
       process.stdin.resume();
       process.stdin.once('data', (buf) => {
-        const key = buf.toString();
+        const key = buf.toString().toLowerCase();
         process.stdin.setRawMode(false);
         process.stdin.pause();
         resolve(key);
       });
     });
 
-    process.stdout.write(`${answer === 'y' ? 'y' : 'n'}\n`);
+    // Y/y or Enter (raw mode sends \r) = yes, anything else = no
+    const accepted = answer === 'y' || answer === '\r';
+    process.stdout.write(`${accepted ? 'y' : 'n'}\n`);
 
-    if (answer !== 'y') return;
+    if (!accepted) return;
 
     process.stdout.write(`${DIM}  updating…${RESET}\n`);
     // Safe: commands are hardcoded literals, no user input involved
