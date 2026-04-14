@@ -82,6 +82,9 @@ class GeminiAdapter implements FixyAdapter {
   }
 
   async getActiveModel(): Promise<string | null> {
+    // Gemini CLI doesn't expose its active model in config or --version.
+    // It uses "Auto" mode (picks best model per task) unless user sets -m.
+    // We can only detect the model name if it appears in --version output.
     try {
       const cmd = await resolveCommand('gemini');
       const result = await runChildProcess({
@@ -92,15 +95,13 @@ class GeminiAdapter implements FixyAdapter {
         timeoutMs: 5_000,
       });
       const output = (result.stdout + result.stderr).trim();
-      // Try to match a gemini model name pattern first
-      const modelMatch = output.match(/gemini-[0-9]+(?:\.[0-9]+)?(?:-[a-z0-9]+)*/);
+      // Only match actual gemini model names (not the CLI version number)
+      const modelMatch = output.match(/gemini-[0-9]+(?:\.[0-9]+)?(?:-[a-z0-9-]+)*/);
       if (modelMatch) return modelMatch[0].trim();
-      // Fall back to version string (e.g. "0.17.1")
-      const versionMatch = output.match(/[0-9]+\.[0-9]+\.[0-9]+/);
-      if (versionMatch) return `v${versionMatch[0]}`;
     } catch {
-      // Ignore — model name is best-effort
+      // Ignore
     }
+    // Return null — don't return CLI version as a model name
     return null;
   }
 

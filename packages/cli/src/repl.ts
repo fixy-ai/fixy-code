@@ -309,22 +309,28 @@ export async function startRepl(params: ReplParams): Promise<void> {
     const modelCount = modelMatches.length;
     const hasEffort = msgContent.includes('Effort (optional)');
 
-    if (modelCount === 0) return null;
-
-    // Step 1: Pick model number
-    const modelPrompt = `\x1b[38;5;105m[1-${modelCount}] or model name\x1b[0m `;
+    // Step 1: Pick model — number from list or type a name
+    const modelPrompt = modelCount > 0
+      ? `\x1b[38;5;105m[1-${modelCount}] or model name\x1b[0m `
+      : `\x1b[38;5;105mmodel name\x1b[0m `;
     const pickModel = async (): Promise<string | null> => {
       for (;;) {
         const raw = await askChoice(modelPrompt, signal);
         if (raw === null) return null;
         const input = raw.trim();
-        if (input.length === 0) continue;
-        // Accept number
-        const n = parseInt(input, 10);
-        if (n >= 1 && n <= modelCount) return String(n);
+        if (input.length === 0) return null;
+        // Accept number (if we have a list)
+        if (modelCount > 0) {
+          const n = parseInt(input, 10);
+          if (n >= 1 && n <= modelCount) return String(n);
+        }
         // Accept typed model name directly (anything with a letter)
         if (/[a-zA-Z]/.test(input)) return input;
-        process.stdout.write(`Type a number [1-${modelCount}] or a model name\n`);
+        if (modelCount > 0) {
+          process.stdout.write(`Type a number [1-${modelCount}] or a model name\n`);
+        } else {
+          process.stdout.write('Type a model name\n');
+        }
       }
     };
     const modelChoice = await pickModel();

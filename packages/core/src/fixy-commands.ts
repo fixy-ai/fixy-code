@@ -745,13 +745,16 @@ export class FixyCommandRunner {
     }
 
     const models = await adapter.listModels();
-    const lines: string[] = [`MODEL_SELECT @${adapterId}`, 'Models:'];
+    const lines: string[] = [`MODEL_SELECT @${adapterId}`];
 
-    for (let i = 0; i < models.length; i++) {
-      const m = models[i];
-      if (!m) continue;
-      const desc = m.description ? `  — ${m.description}` : '';
-      lines.push(`  [${i + 1}] ${m.id}${desc}`);
+    if (models.length > 0) {
+      lines.push('Models:');
+      for (let i = 0; i < models.length; i++) {
+        const m = models[i];
+        if (!m) continue;
+        const desc = m.description ? `  — ${m.description}` : '';
+        lines.push(`  [${i + 1}] ${m.id}${desc}`);
+      }
     }
 
     if (adapterId === 'codex') {
@@ -761,7 +764,7 @@ export class FixyCommandRunner {
     }
 
     lines.push('');
-    lines.push('Or type any model name directly');
+    lines.push('Type a model name (e.g. gemini-3-pro, claude-sonnet-4-6, gpt-5.4)');
 
     await this._appendSystemMessage(lines.join('\n'), ctx);
   }
