@@ -105,8 +105,20 @@ class ClaudeAdapter implements FixyAdapter {
       { id: 'claude-opus-4-6', description: 'Most capable — best for complex tasks' },
       { id: 'claude-sonnet-4-6', description: 'Balanced speed and intelligence' },
       { id: 'claude-haiku-4-5', description: 'Fastest and most compact' },
+      { id: 'claude-sonnet-4-5', description: 'Previous gen — Sonnet 4.5' },
     ];
 
+    // 1. Try fixy.ai dynamic model list
+    try {
+      const { fetchProviderModels } = await import('@fixy/core');
+      const providers = await fetchProviderModels();
+      const claude = providers.find((p) => p.provider === 'claude');
+      if (claude && claude.models.length > 0) {
+        return claude.models.map((m) => ({ id: m.id, description: m.description }));
+      }
+    } catch { /* fixy.ai unreachable — continue */ }
+
+    // 2. Try Anthropic API directly
     const apiKey = process.env['ANTHROPIC_API_KEY'];
     if (!apiKey) return fallback;
 

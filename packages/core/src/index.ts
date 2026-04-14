@@ -53,5 +53,5 @@ export { settingsPath, authPath } from './paths.js';
 export type { FixyAuth, DeviceCodeResponse, PollResult } from './auth.js';
 export { loadAuth, saveAuth, clearAuth, isAuthExpired, requestDeviceCode, pollDeviceAuth, runDeviceAuthFlow } from './auth.js';
 
-export { fetchProfile, registerSession, heartbeat, deleteSession, listSessions, fetchPlans, fetchUsage } from './api.js';
-export type { CodeProfile, CodeSession, CodePlan } from './api.js';
+export { fetchProfile, registerSession, heartbeat, deleteSession, listSessions, fetchPlans, fetchUsage, fetchProviderModels } from './api.js';
+export type { CodeProfile, CodeSession, CodePlan, ProviderModels } from './api.js';

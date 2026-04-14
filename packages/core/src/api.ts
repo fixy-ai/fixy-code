@@ -117,6 +117,30 @@ export async function fetchPlans(): Promise<CodePlan[]> {
   return res.json() as Promise<CodePlan[]>;
 }
 
+// ── Models (public, no auth) ──
+
+export interface ProviderModels {
+  provider: string;
+  models: Array<{ id: string; description?: string }>;
+}
+
+export async function fetchProviderModels(): Promise<ProviderModels[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch(`${FIXY_API_BASE}/models`, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    return res.json() as Promise<ProviderModels[]>;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Usage ──
 
 export async function fetchUsage(days = 30): Promise<Record<string, unknown>> {

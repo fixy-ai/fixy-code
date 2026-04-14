@@ -103,10 +103,23 @@ class GeminiAdapter implements FixyAdapter {
 
   async listModels(): Promise<FixyModelInfo[]> {
     const fallback: FixyModelInfo[] = [
-      { id: 'gemini-2.5-pro', description: 'Most capable Gemini model' },
-      { id: 'gemini-2.0-flash', description: 'Fast and efficient' },
+      { id: 'gemini-3-pro', description: 'Most capable Gemini model' },
+      { id: 'gemini-3-flash', description: 'Fast and efficient' },
+      { id: 'gemini-2.5-pro', description: 'Previous gen — Gemini 2.5 Pro' },
+      { id: 'gemini-2.5-flash', description: 'Previous gen — Gemini 2.5 Flash' },
     ];
 
+    // 1. Try fixy.ai dynamic model list
+    try {
+      const { fetchProviderModels } = await import('@fixy/core');
+      const providers = await fetchProviderModels();
+      const gemini = providers.find((p) => p.provider === 'gemini');
+      if (gemini && gemini.models.length > 0) {
+        return gemini.models.map((m) => ({ id: m.id, description: m.description }));
+      }
+    } catch { /* fixy.ai unreachable — continue */ }
+
+    // 2. Try Google API directly
     const apiKey = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'];
     if (!apiKey) return fallback;
 

@@ -98,10 +98,22 @@ class CodexAdapter implements FixyAdapter {
 
   async listModels(): Promise<FixyModelInfo[]> {
     const fallback: FixyModelInfo[] = [
-      { id: 'gpt-4o' },
-      { id: 'gpt-4o-mini' },
+      { id: 'gpt-5.4', description: 'Most capable — GPT 5.4' },
+      { id: 'gpt-4o', description: 'Fast and capable' },
+      { id: 'gpt-4o-mini', description: 'Fastest and cheapest' },
     ];
 
+    // 1. Try fixy.ai dynamic model list
+    try {
+      const { fetchProviderModels } = await import('@fixy/core');
+      const providers = await fetchProviderModels();
+      const codex = providers.find((p) => p.provider === 'codex');
+      if (codex && codex.models.length > 0) {
+        return codex.models.map((m) => ({ id: m.id, description: m.description }));
+      }
+    } catch { /* fixy.ai unreachable — continue */ }
+
+    // 2. Try OpenAI API directly
     const apiKey = process.env['OPENAI_API_KEY'];
     let models: FixyModelInfo[] = fallback;
 
