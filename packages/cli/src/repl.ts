@@ -490,7 +490,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     // Step 1: Pick model — number from list or type a name
     const modelPrompt =
       modelCount > 0
-        ? `\x1b[38;5;105m[1-${modelCount}] or model name\x1b[0m `
+        ? `\x1b[38;5;105m1-${modelCount} or model name\x1b[0m `
         : `\x1b[38;5;105mmodel name\x1b[0m `;
     const pickModel = async (): Promise<string | null> => {
       for (;;) {
@@ -506,7 +506,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
         // Accept typed model name directly (anything with a letter)
         if (/[a-zA-Z]/.test(input)) return input;
         if (modelCount > 0) {
-          process.stdout.write(`Type a number [1-${modelCount}] or a model name\n`);
+          process.stdout.write(`Type a number 1-${modelCount} or a model name\n`);
         } else {
           process.stdout.write('Type a model name\n');
         }
@@ -556,12 +556,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
     msgContent: string,
     signal?: AbortSignal,
   ): Promise<string | null> => {
-    const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
+    const matches = [...msgContent.matchAll(/(\d+)\.\s+@(\w+)/g)];
     const adapters = matches.map((m) => m[2] ?? '');
     if (adapters.length === 0) return null;
     const range = `1-${adapters.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}]\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m${range}\x1b[0m `, signal);
       if (choice === null) return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= adapters.length) return `@fixy /worker ${adapters[n - 1]}`;
@@ -573,13 +573,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
     msgContent: string,
     signal?: AbortSignal,
   ): Promise<string | null> => {
-    const matchA = msgContent.match(/\[1\] Go with @(\w+)/);
-    const matchB = msgContent.match(/\[2\] Go with @(\w+)/);
+    const matchA = msgContent.match(/1\. Go with @(\w+)/);
+    const matchB = msgContent.match(/2\. Go with @(\w+)/);
     const agentA = matchA?.[1] ?? thread.workerModel;
     const agentB = matchB?.[1] ?? thread.workerModel;
 
     while (true) {
-      const choice = await askChoice('\x1b[38;5;105m[1/2/3]\x1b[0m ', signal);
+      const choice = await askChoice('\x1b[38;5;105m1/2/3\x1b[0m ', signal);
       if (choice === null) return null;
       if (choice === '1') return `@fixy Go with @${agentA}'s approach`;
       if (choice === '2') return `@fixy Go with @${agentB}'s approach`;
@@ -593,13 +593,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
     msgContent: string,
     signal?: AbortSignal,
   ): Promise<string | null> => {
-    // Parse thread ids from numbered list: [1] abcdef12… <full-id>
-    const matches = [...msgContent.matchAll(/\[(\d+)\]\s+\w+…\s+([\w-]+)/g)];
-    const threadIds = matches.map((m) => m[2] ?? '');
+    // Parse thread ids from numbered list: 1. abcdef12… <full-id>
+    const matches = [...msgContent.matchAll(/(\d+)\.\s+(?:\S+\s+)?(\w{8})…\s+([\w-]+)/g)];
+    const threadIds = matches.map((m) => m[3] ?? '');
     if (threadIds.length === 0) return null;
     const range = `1-${threadIds.length}`;
     while (true) {
-      const choice = await askChoice(`\x1b[38;5;105m[${range}] or ESC to cancel\x1b[0m `, signal);
+      const choice = await askChoice(`\x1b[38;5;105m${range} or ESC to cancel\x1b[0m `, signal);
       if (choice === null || choice === '') return null;
       const n = parseInt(choice, 10);
       if (n >= 1 && n <= threadIds.length) return threadIds[n - 1] ?? null;

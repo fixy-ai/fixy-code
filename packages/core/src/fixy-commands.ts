@@ -148,11 +148,13 @@ export class FixyCommandRunner {
   private async _handleWorker(adapterId: string, ctx: FixyCommandContext): Promise<void> {
     if (!adapterId.trim()) {
       const adapters = ctx.registry.list();
-      const lines: string[] = ['WORKER_SELECT', 'Choose your default worker:'];
+      const currentWorker = ctx.thread.workerModel ?? 'claude';
+      const lines: string[] = ['WORKER_SELECT', `Current worker: @${currentWorker}`, '', 'Choose your default worker:'];
       for (let i = 0; i < adapters.length; i++) {
         const adapter = adapters[i];
         if (!adapter) continue;
-        lines.push(`  [${i + 1}] @${adapter.id} — ${adapter.name}`);
+        const marker = adapter.id === currentWorker ? ' (current)' : '';
+        lines.push(`  ${i + 1}. @${adapter.id} — ${adapter.name}${marker}`);
       }
       await this._appendSystemMessage(lines.join('\n'), ctx);
       return;
@@ -810,7 +812,7 @@ export class FixyCommandRunner {
         currentModel = (await adapter.getActiveModel?.()) || 'default';
       }
       const status = isDisabled ? 'disabled' : 'enabled';
-      lines.push(`  [${i + 1}] @${adapter.id.padEnd(8)} ${currentModel.padEnd(16)} ${status}`);
+      lines.push(`  ${i + 1}. @${adapter.id.padEnd(8)} ${currentModel.padEnd(16)} ${status}`);
     }
 
     lines.push('');
@@ -911,7 +913,7 @@ export class FixyCommandRunner {
         const m = models[i];
         if (!m) continue;
         const desc = m.description ? `  — ${m.description}` : '';
-        lines.push(`  [${i + 1}] ${m.id}${desc}`);
+        lines.push(`  ${i + 1}. ${m.id}${desc}`);
       }
     }
 
@@ -1029,9 +1031,9 @@ export class FixyCommandRunner {
     return [
       'AGENTS DISAGREE',
       '',
-      `[1] Go with @${d.agentA}'s approach: ${summaryA}`,
-      `[2] Go with @${d.agentB}'s approach: ${summaryB}`,
-      '[3] Find a middle ground between both approaches',
+      `1. Go with @${d.agentA}'s approach: ${summaryA}`,
+      `2. Go with @${d.agentB}'s approach: ${summaryB}`,
+      '3. Find a middle ground between both approaches',
       '',
       'Type 1, 2, or 3 to continue.',
     ].join('\n');
@@ -1282,7 +1284,7 @@ export class FixyCommandRunner {
       const msgs = t.messages.length;
       const nameLabel = t.name ? `${t.name} ` : '';
       lines.push(
-        `  [${i + 1}] ${nameLabel}${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`,
+        `  ${i + 1}. ${nameLabel}${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`,
       );
     }
     lines.push('', 'Choose a number to switch, or Enter to dismiss');
