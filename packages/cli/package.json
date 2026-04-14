@@ -1,6 +1,6 @@
 {
   "name": "@fixy/code",
-  "version": "0.0.63",
+  "version": "0.0.64",
   "type": "module",
   "bin": {
     "fixy": "./dist/cli.js"
