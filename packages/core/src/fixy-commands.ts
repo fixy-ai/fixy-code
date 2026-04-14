@@ -28,6 +28,12 @@ function agentLabel(id: string): string {
   return `${color}@${id}:${RESET}`;
 }
 
+/** Dim cyan phase header — visually distinct from agent output */
+const PH = '\x1b[2;36m'; // dim cyan for phase headers
+function phaseHeader(text: string): string {
+  return `${PH}fixy · ${text}${RESET}`;
+}
+
 export interface FixyCommandContext {
   thread: FixyThread;
   rest: string;
@@ -263,7 +269,7 @@ export class FixyCommandRunner {
     const discussionLog: Array<{ agentId: string; content: string }> = [];
 
     if (soloMode) {
-      log('\n[fixy /all] Solo mode — skipping discussion phase\n');
+      log(`\n${phaseHeader('solo mode — skipping discuss')}\n`);
     } else {
       const agentNames = allAdapters.map((a) => `@${a.id}`).join(', ');
       const buildFraming = (agentId: string): string =>
@@ -271,7 +277,7 @@ export class FixyCommandRunner {
 
       for (let round = 1; round <= 5; round++) {
         if (ctx.signal.aborted) break;
-        log(`\n[fixy /all] Phase 1: discussion round ${round}/5\n`);
+        log(`\n${phaseHeader(`discuss · round ${round}/5`)}\n`);
 
         let allAgree = true;
         for (let ti = 0; ti < thinkers.length; ti++) {
@@ -325,7 +331,7 @@ export class FixyCommandRunner {
         }
 
         if (allAgree) {
-          log('\n[fixy /all] Phase 1: all thinkers agree — ending discussion\n');
+          log(`\n${phaseHeader('discuss · all agents agree')}\n`);
           break;
         }
       }
@@ -333,7 +339,7 @@ export class FixyCommandRunner {
 
     // ── PHASE 2: PLAN BREAKDOWN ──
     if (ctx.signal.aborted) return;
-    log('\n[fixy /all] Phase 2: plan breakdown\n');
+    log(`\n${phaseHeader('plan')}\n`);
 
     const planPrompt =
       'Break the agreed approach into ordered steps. Each step must be a concrete, scoped action. Output ONLY a numbered list, max 20 items total, no prose.';
@@ -384,7 +390,7 @@ export class FixyCommandRunner {
       return;
     }
 
-    log(`\n[fixy /all] Phase 2: ${todos.length} TODO items extracted\n`);
+    log(`\n${phaseHeader(`plan · ${todos.length} steps`)}\n`);
 
     // ── PHASE 3+4: WORKER EXECUTION + REVIEW (batches of 5) ──
     const batches: string[][] = [];
@@ -397,7 +403,7 @@ export class FixyCommandRunner {
       const batch = batches[batchIdx];
       if (!batch) continue;
       log(
-        `\n[fixy /all] Phase 3: worker executing batch ${batchIdx + 1}/${batches.length} (${batch.length} TODOs)\n`,
+        `\n${phaseHeader(`execute · batch ${batchIdx + 1}/${batches.length} (${batch.length} steps)`)}\n`,
       );
 
       const batchList = batch.map((t, i) => `${i + 1}. ${t}`).join('\n');
@@ -418,7 +424,7 @@ export class FixyCommandRunner {
         for (let attempt = 0; attempt < 2 && !approved; attempt++) {
           if (ctx.signal.aborted) break;
           log(
-            `\n[fixy /all] Phase 4: review of batch ${batchIdx + 1} (attempt ${attempt + 1}/2)\n`,
+            `\n${phaseHeader(`review · batch ${batchIdx + 1} (attempt ${attempt + 1}/2)`)}\n`,
           );
 
           const issues: string[] = [];
@@ -438,7 +444,7 @@ export class FixyCommandRunner {
 
           if (issues.length === 0) {
             approved = true;
-            log(`\n[fixy /all] Phase 4: batch ${batchIdx + 1} approved\n`);
+            log(`\n${phaseHeader(`review · batch ${batchIdx + 1} approved`)}\n`);
           } else {
             log(`\n${agentLabel(workerAdapter.id)}\n`);
             try {
@@ -454,7 +460,7 @@ export class FixyCommandRunner {
 
     // ── PHASE 5: FINAL REVIEW ──
     if (ctx.signal.aborted) return;
-    log('\n[fixy /all] Phase 5: final review\n');
+    log(`\n${phaseHeader('final review')}\n`);
 
     if (!soloMode) {
       const threadSummary = ctx.thread.messages
@@ -477,11 +483,11 @@ export class FixyCommandRunner {
       }
 
       await this._appendSystemMessage(
-        `[fixy /all] collaboration complete\n\nFinal review:\n${finalResults.join('\n')}`,
+        `${phaseHeader('complete')}\n\nFinal review:\n${finalResults.join('\n')}`,
         ctx,
       );
     } else {
-      await this._appendSystemMessage('[fixy /all] collaboration complete (solo mode)', ctx);
+      await this._appendSystemMessage(phaseHeader('complete (solo mode)'), ctx);
     }
   }
 
