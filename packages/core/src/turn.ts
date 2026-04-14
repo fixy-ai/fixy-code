@@ -76,6 +76,11 @@ export class TurnController {
           await this._appendSystemMessage('maximum 3 adapters per turn', params);
           return {};
         }
+        if (!parsed.body.trim() && parsed.fileRefs.length === 0) {
+          const agents = parsed.agentIds.map((id) => `@${id}`).join(', ');
+          await this._appendSystemMessage(`Usage: ${agents} <message>`, params);
+          return {};
+        }
         let mentionBody = parsed.body;
         if (parsed.fileRefs.length > 0) {
           const { prefix, errors } = await this._resolveFileRefs(
