@@ -312,18 +312,23 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (modelCount === 0) return null;
 
     // Step 1: Pick model number
-    const modelPrompt = `\x1b[38;5;105m[1-${modelCount}]>\x1b[0m `;
+    const modelPrompt = `\x1b[38;5;105m[1-${modelCount}] or model name\x1b[0m `;
     const pickModel = async (): Promise<string | null> => {
       for (;;) {
         const raw = await askChoice(modelPrompt, signal);
         if (raw === null) return null;
-        const n = parseInt(raw.trim(), 10);
+        const input = raw.trim();
+        if (input.length === 0) continue;
+        // Accept number
+        const n = parseInt(input, 10);
         if (n >= 1 && n <= modelCount) return String(n);
-        process.stdout.write(`Please type a number between 1-${modelCount}\n`);
+        // Accept typed model name directly (anything with a letter)
+        if (/[a-zA-Z]/.test(input)) return input;
+        process.stdout.write(`Type a number [1-${modelCount}] or a model name\n`);
       }
     };
-    const modelNum = await pickModel();
-    if (modelNum === null) return null;
+    const modelChoice = await pickModel();
+    if (modelChoice === null) return null;
 
     // Step 2: Pick effort (Codex only)
     let effortLetter = '';
@@ -339,7 +344,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (saveRaw === null) return null;
     const save = saveRaw.trim().toLowerCase() === 'y' ? 'y' : 'n';
 
-    return `@fixy /model @${adapterId} apply ${modelNum}${effortLetter} ${save}`;
+    return `@fixy /model @${adapterId} apply ${modelChoice}${effortLetter} ${save}`;
   };
 
   const resolveAdapterToggle = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {

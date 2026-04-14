@@ -760,6 +760,9 @@ export class FixyCommandRunner {
       lines.push('  [a] low   [b] medium   [c] high   [d] xhigh');
     }
 
+    lines.push('');
+    lines.push('Or type any model name directly');
+
     await this._appendSystemMessage(lines.join('\n'), ctx);
   }
 
@@ -774,12 +777,6 @@ export class FixyCommandRunner {
     const adapter = ctx.registry.require(adapterId);
     const models = adapter.listModels ? await adapter.listModels() : [];
 
-    const numMatch = /^(\d+)/.exec(selection);
-    const letterMatch = /([a-d])$/i.exec(selection);
-
-    const modelIndex = numMatch ? parseInt(numMatch[1] ?? '', 10) - 1 : -1;
-    const effortLetter = letterMatch ? (letterMatch[1] ?? '').toLowerCase() : null;
-
     const effortMap: Record<string, string> = {
       a: 'low',
       b: 'medium',
@@ -787,8 +784,28 @@ export class FixyCommandRunner {
       d: 'xhigh',
     };
 
-    const selectedModel = modelIndex >= 0 ? (models[modelIndex]?.id ?? null) : null;
-    const selectedEffort = effortLetter ? (effortMap[effortLetter] ?? null) : null;
+    // Parse selection: could be a number (1), number+effort (1a), or a model name (gemini-3-pro)
+    const numMatch = /^(\d+)/.exec(selection);
+    const letterMatch = /([a-d])$/i.exec(selection);
+
+    let selectedModel: string | null = null;
+    let selectedEffort: string | null = null;
+
+    if (numMatch) {
+      // Number-based selection
+      const modelIndex = parseInt(numMatch[1] ?? '', 10) - 1;
+      selectedModel = modelIndex >= 0 ? (models[modelIndex]?.id ?? null) : null;
+      const effortLetter = letterMatch ? (letterMatch[1] ?? '').toLowerCase() : null;
+      selectedEffort = effortLetter ? (effortMap[effortLetter] ?? null) : null;
+    } else if (/[a-zA-Z]/.test(selection)) {
+      // Typed model name — check if it ends with an effort letter (only for codex)
+      if (adapterId === 'codex' && letterMatch && /^[a-d]$/i.test(selection.slice(-1))) {
+        selectedModel = selection.slice(0, -1);
+        selectedEffort = effortMap[letterMatch[1]?.toLowerCase() ?? ''] ?? null;
+      } else {
+        selectedModel = selection;
+      }
+    }
 
     if (selectedModel === null && selectedEffort === null) {
       await this._appendSystemMessage(
