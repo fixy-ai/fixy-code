@@ -188,13 +188,16 @@ export async function startRepl(params: ReplParams): Promise<void> {
     let menuItems: Array<{ name: string; desc: string }> = [];
     let selectedIndex = 0;
 
+    // Erase menu using RELATIVE cursor movement (scroll-safe).
+    // \x1b[s / \x1b[u (save/restore cursor) breaks when terminal scrolls.
     const eraseMenu = (): void => {
       if (menuHeight === 0) return;
-      let seq = '\x1b[s';
+      // Move down, clear each line, move back up — all relative
+      let seq = '';
       for (let i = 0; i < menuHeight; i++) {
         seq += '\x1b[1B\x1b[2K';
       }
-      seq += '\x1b[u';
+      seq += `\x1b[${menuHeight}A`;
       process.stdout.write(seq);
       menuHeight = 0;
       menuItems = [];
@@ -211,7 +214,6 @@ export async function startRepl(params: ReplParams): Promise<void> {
       // Scroll window: keep selectedIndex visible within MAX_MENU_VISIBLE
       let scrollStart = 0;
       if (items.length > MAX_MENU_VISIBLE) {
-        // Keep selection centered-ish in the visible window
         scrollStart = Math.max(0, selectedIndex - Math.floor(MAX_MENU_VISIBLE / 2));
         scrollStart = Math.min(scrollStart, items.length - MAX_MENU_VISIBLE);
       }
@@ -226,13 +228,16 @@ export async function startRepl(params: ReplParams): Promise<void> {
         return `${bg}  ${nameColor}${item.name.padEnd(12)}${MENU_RESET}${bg}${descColor}${item.desc}${MENU_RESET}`;
       });
 
-      // Show scroll indicator if items are truncated
       if (items.length > MAX_MENU_VISIBLE) {
         const indicator = `${MENU_DIM}  ↕ ${items.length} items (${selectedIndex + 1}/${items.length})${MENU_RESET}`;
         lines.push(indicator);
       }
 
-      process.stdout.write('\x1b[s\n' + lines.join('\n') + '\x1b[u');
+      // Draw below, then move cursor back up using relative movement (scroll-safe)
+      process.stdout.write('\n' + lines.join('\n') + `\x1b[${lines.length}A`);
+      // Restore cursor column by refreshing readline's display
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      (rl as any)._refreshLine();
       menuHeight = lines.length;
     };
 
