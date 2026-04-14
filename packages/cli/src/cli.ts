@@ -85,10 +85,11 @@ async function checkForUpdate(localVersion: string): Promise<void> {
       process.stdout.write(`${INDIGO}  ✓  Updated to v${remoteVersion} — Fixy is restarting…${RESET}\n`);
       // Destroy stdin to clean up event listeners before spawning child process
       process.stdin.destroy();
-      // Resolve the freshly installed binary path (not the old process.argv[1] which may be cached)
-      const freshBin = execSync('which fixy', { encoding: 'utf8' }).trim() || process.argv[1] || 'fixy';
-      // Re-launch the updated binary; pass --skip-update-check so the fresh process skips the update check.
-      spawnSync(freshBin, ['--skip-update-check', ...process.argv.slice(2)], {
+      // Resolve the real script path from the freshly installed package (follow symlinks)
+      const binPath = execSync('which fixy', { encoding: 'utf8' }).trim() || 'fixy';
+      const realPath = execSync(`realpath "${binPath}"`, { encoding: 'utf8' }).trim();
+      // Re-launch via node directly to avoid any module caching
+      spawnSync(process.execPath, [realPath, '--skip-update-check', ...process.argv.slice(2)], {
         stdio: 'inherit',
         cwd: process.cwd(),
       });
