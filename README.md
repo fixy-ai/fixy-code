@@ -2,7 +2,7 @@
 
 **One terminal. Multiple AI coding agents. Working together.**
 
-Fixy Code lets you talk to Claude and Codex in a single conversation — at the same time. Each agent reviews the other, challenges bad ideas, and helps you pick the best solution. You keep your existing subscriptions. Fixy Code just coordinates.
+Fixy Code lets you talk to Claude, Codex, and Gemini in a single conversation — at the same time. Each agent reviews the others, challenges bad ideas, and helps you pick the best solution. You keep your existing subscriptions. Fixy Code just coordinates.
 
 > For the full product experience and web app, visit [fixy.ai](https://fixy.ai)
 > For Fixy Code documentation and updates, visit [fixy.ai/code](https://fixy.ai/code)
@@ -13,7 +13,7 @@ Fixy Code lets you talk to Claude and Codex in a single conversation — at the 
 
 Every AI coding tool gives you one agent's opinion. That agent will confidently agree with your bad ideas, miss its own blind spots, and never tell you when it's wrong.
 
-Fixy Code fixes this by putting Claude (Anthropic) and Codex (OpenAI) in the same room. They were trained by different companies with different blind spots. Their disagreements are signal, not noise.
+Fixy Code fixes this by putting Claude (Anthropic), Codex (OpenAI), and Gemini (Google) in the same room. They were trained by different companies with different blind spots. Their disagreements are signal, not noise.
 
 ---
 
@@ -46,6 +46,7 @@ Before installing Fixy Code, make sure you have at least one of these installed 
 |---|---|---|
 | Claude Code | `npm install -g @anthropic-ai/claude-code` | `claude` |
 | Codex CLI | `npm install -g @openai/codex` | `codex` |
+| Gemini CLI | `npm install -g @google/gemini-cli` | `gemini` |
 
 You need Node.js 20 or higher. Works on macOS, Linux, and Windows.
 
@@ -103,38 +104,113 @@ npm uninstall -g @fixy/code
 ```
 @claude <message>         — send a message to Claude Code
 @codex <message>          — send a message to Codex CLI
+@gemini <message>         — send a message to Gemini CLI
 @claude @codex <message>  — send to multiple agents at once
+<message>                 — send to your default worker (no @ needed)
 ```
 
-### Fixy commands
+### File references
+
+Include file content in your prompt with `@path`:
 
 ```
-@fixy /all <task>         — all agents collaborate on one task (discuss → plan → execute → review)
-@fixy /worker <agent>     — set which agent handles bare prompts (default: claude)
-@fixy /status             — show which agents are available and their current models
-@fixy /red-room on        — enable adversarial mode (agents challenge each other aggressively)
-@fixy /red-room off       — disable adversarial mode
-@fixy /set <agent> <flags>  — pass custom CLI flags to a specific agent for this conversation
+@claude review @./src/auth.ts for security issues
+@codex refactor @./utils/helper.ts
+explain @./package.json
 ```
 
-### Conversation commands
+Files with `/` or starting with `.` are treated as file references, not agent mentions.
+
+### Shell commands
+
+Run shell commands directly with `!`:
 
 ```
-/compact                  — summarize the conversation so far (saves context for long sessions)
-/compact @claude          — use Claude specifically to summarize
-/settings                 — view your global settings
-/settings set <key> <value>  — update a setting
-/settings reset           — restore all settings to defaults
+!git status
+!ls -la src/
+!npm test
+```
+
+### Collaboration
+
+```
+/all <task>               — all agents collaborate (discuss, plan, execute, review)
+/agents                   — list agents, enable/disable for @all
+/agents enable <name>     — include agent in @all
+/agents disable <name>    — exclude agent from @all
+/red-room                 — show current mode (on/off)
+/red-room on              — enable adversarial mode
+/red-room off             — disable adversarial mode
+```
+
+### Model selection
+
+```
+/model                    — change model for current worker
+/model @claude            — change Claude's model
+/model @codex             — change Codex's model
+/model @gemini            — change Gemini's model
+```
+
+You can type a number from the list or a model name directly. Both aliases and full model IDs work:
+
+```
+haiku                     — alias for latest Haiku
+sonnet                    — alias for latest Sonnet
+opus                      — alias for latest Opus
+claude-opus-4-6           — full model ID
+claude-haiku-4-5-20251001 — full model ID with date
+```
+
+The model applies to the adapter everywhere — both direct `@agent` calls and worker calls use the same model.
+
+### Session management
+
+```
+/worker                   — show/change default worker
+/new                      — create a new session
+/threads                  — list and switch sessions
+/rename <name>            — give current session a name
+/fork                     — fork current session (copy history to new thread)
+/status                   — show agents, models, and session info
+/stats                    — show token usage and session statistics
+```
+
+### Utility commands
+
+```
+/diff                     — show git diff and untracked files
+/copy                     — copy last response to clipboard
+/clear                    — clear terminal screen
+/compact                  — reset adapter session
+/settings                 — view global settings
+/settings set <key> <val> — update a setting
+/shortcuts                — show all keyboard shortcuts
+/help                     — show all commands and usage
 /quit                     — exit Fixy
+```
+
+### Account
+
+```
+/login                    — sign in to fixy.ai
+/logout                   — sign out
+/account                  — view plan and usage
+/upgrade                  — open plan management in browser
 ```
 
 ### Keyboard shortcuts
 
 ```
-ESC                       — cancel a running agent turn, or clear the current input line
-Ctrl-C                    — cancel a running turn; press again to exit
-/  (at empty prompt)      — show command menu
-@  (at empty prompt)      — show agent menu
+Enter                     — submit message
+Alt+Enter                 — new line (multi-line input)
+\ at end of line          — continue on next line
+ESC                       — cancel running turn or clear input
+Ctrl-C                    — cancel turn; press again to exit
+/                         — show command menu (with arrow navigation)
+@                         — show agent menu
+Tab                       — accept autocomplete selection
+Up/Down                   — navigate menu
 ```
 
 ---
@@ -152,8 +228,8 @@ When two agents genuinely disagree, Fixy shows you a choice panel:
 │  @claude: use JWT refresh tokens (stateless)          │
 │  @codex:  use session cookies (simpler, more secure)  │
 │                                                        │
-│  [1] Go with @claude   [2] Go with @codex             │
-│  [3] Ask them to find a middle ground                  │
+│  1. Go with @claude   2. Go with @codex               │
+│  3. Ask them to find a middle ground                   │
 ╰──────────────────────────────────────────────────────╯
 ```
 
@@ -184,8 +260,13 @@ Settings are stored in `~/.fixy/settings.json`. You can edit this file directly 
 | `maxDiscussionRounds` | `3` | How many rounds agents discuss before deciding |
 | `maxReviewRounds` | `2` | How many review passes after execution |
 | `maxTodosPerBatch` | `5` | How many tasks agents execute per batch |
+| `claudeModel` | `""` | Model for Claude (e.g. `haiku`, `sonnet`, `opus`, or full ID) |
+| `codexModel` | `""` | Model for Codex (e.g. `gpt-5.4`) |
+| `geminiModel` | `""` | Model for Gemini (e.g. `gemini-3.1-pro-preview`) |
 | `claudeArgs` | `""` | Extra CLI flags passed to Claude on every call |
 | `codexArgs` | `""` | Extra CLI flags passed to Codex on every call |
+| `geminiArgs` | `""` | Extra CLI flags passed to Gemini on every call |
+| `disabledAdapters` | `[]` | Agents excluded from @all broadcasts |
 
 ### Per-conversation overrides
 
