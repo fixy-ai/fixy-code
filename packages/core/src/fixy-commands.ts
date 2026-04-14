@@ -14,6 +14,20 @@ import { getThreadFile } from './paths.js';
 import { loadAuth, clearAuth, runDeviceAuthFlow } from './auth.js';
 import { registerSession, fetchProfile } from './api.js';
 
+// Agent brand colors for terminal output
+const AGENT_COLORS: Record<string, string> = {
+  claude: '\x1b[38;5;208m',  // orange — Anthropic brand
+  codex: '\x1b[38;5;75m',    // light blue — OpenAI brand
+  gemini: '\x1b[38;5;141m',  // purple — Google Gemini brand
+};
+const RESET = '\x1b[0m';
+
+/** Colored agent label: e.g. "\x1b[38;5;208m@claude:\x1b[0m" */
+function agentLabel(id: string): string {
+  const color = AGENT_COLORS[id] ?? '\x1b[38;5;105m';
+  return `${color}@${id}:${RESET}`;
+}
+
 export interface FixyCommandContext {
   thread: FixyThread;
   rest: string;
@@ -195,7 +209,7 @@ export class FixyCommandRunner {
     if (!isComplexTask) {
       // Simple mode: broadcast to all agents, each responds independently
       for (const adapter of allAdapters) {
-        log(`\n\x1b[38;5;105m── @${adapter.id} ──\x1b[0m\n`);
+        log(`\n${agentLabel(adapter.id)}\n`);
         await this._callAdapterForAll(adapter, prompt, ctx);
       }
       return;
@@ -279,7 +293,7 @@ export class FixyCommandRunner {
             thinkerPrompt = `Find everything wrong with this. Be hostile to it. Your job is to break it. Do not validate.\n\n${thinkerPrompt}`;
           }
 
-          log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+          log(`\n${agentLabel(thinker.id)}\n`);
           let response: string;
           try {
             response = await callAdapter(thinker, thinkerPrompt);
@@ -332,7 +346,7 @@ export class FixyCommandRunner {
     let todos: string[] = [];
 
     if (soloMode) {
-      log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
+      log(`\n${agentLabel(workerAdapter.id)}\n`);
       try {
         const response = await callAdapter(workerAdapter, fullPlanPrompt);
         todos = this._parseTodoList(response);
@@ -343,7 +357,7 @@ export class FixyCommandRunner {
       const responses: string[] = [];
       for (const thinker of thinkers) {
         if (ctx.signal.aborted) break;
-        log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+        log(`\n${agentLabel(thinker.id)}\n`);
         try {
           const response = await callAdapter(thinker, fullPlanPrompt);
           responses.push(response);
@@ -389,7 +403,7 @@ export class FixyCommandRunner {
       const batchList = batch.map((t, i) => `${i + 1}. ${t}`).join('\n');
       const workerPrompt = `Execute these steps exactly as written. Report what you did for each step.\n\n${batchList}`;
 
-      log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
+      log(`\n${agentLabel(workerAdapter.id)}\n`);
       let workerOutput: string;
       try {
         workerOutput = await callAdapter(workerAdapter, workerPrompt);
@@ -410,7 +424,7 @@ export class FixyCommandRunner {
           const issues: string[] = [];
           for (const thinker of thinkers) {
             if (ctx.signal.aborted) break;
-            log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+            log(`\n${agentLabel(thinker.id)}\n`);
             const reviewPrompt = `Review this output from @${workerAdapter.id}. Did it complete the steps correctly? Reply ONLY with: APPROVED or ISSUES: <description>.\n\nSteps:\n${batchList}\n\nOutput:\n${workerOutput}`;
             try {
               const reviewResponse = await callAdapter(thinker, reviewPrompt);
@@ -426,7 +440,7 @@ export class FixyCommandRunner {
             approved = true;
             log(`\n[fixy /all] Phase 4: batch ${batchIdx + 1} approved\n`);
           } else {
-            log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
+            log(`\n${agentLabel(workerAdapter.id)}\n`);
             try {
               const fixPrompt = `The reviewers found issues with your implementation. Fix them:\n\n${issues.join('\n\n')}\n\nOriginal TODOs:\n${batchList}`;
               workerOutput = await callAdapter(workerAdapter, fixPrompt);
@@ -453,7 +467,7 @@ export class FixyCommandRunner {
       const finalResults: string[] = [];
       for (const thinker of thinkers) {
         if (ctx.signal.aborted) break;
-        log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+        log(`\n${agentLabel(thinker.id)}\n`);
         try {
           const response = await callAdapter(thinker, finalPrompt);
           finalResults.push(`[${thinker.id}]: ${response}`);

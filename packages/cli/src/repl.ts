@@ -61,7 +61,7 @@ function createColorizer(): {
           continue;
         }
 
-        // Skip lines that already have ANSI codes (e.g. ── @agent ── separators)
+        // Skip lines that already have ANSI codes (e.g. @agent: labels)
         if (ANSI_RE.test(line)) {
           colored.push(line);
         } else if (inCodeBlock) {
