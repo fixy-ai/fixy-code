@@ -914,22 +914,54 @@ export class FixyCommandRunner {
     }
 
     const models = await adapter.listModels();
+    const G = '\x1b[38;5;114m';
+    const D = '\x1b[2m';
+    const R = '\x1b[0m';
+
+    // Get current model from settings
+    const settings2 = await loadSettings();
+    let currentModel = '';
+    if (adapterId === 'claude') currentModel = settings2.claudeModel;
+    else if (adapterId === 'codex') currentModel = settings2.codexModel;
+    else if (adapterId === 'gemini') currentModel = settings2.geminiModel;
+    if (!currentModel) currentModel = (await adapter.getActiveModel?.()) ?? '';
+
     const lines: string[] = [`MODEL_SELECT @${adapterId}`];
+    if (currentModel) {
+      lines.push(`Current model: ${G}${currentModel}${R}`);
+      lines.push('');
+    }
 
     if (models.length > 0) {
       lines.push('Models:');
       for (let i = 0; i < models.length; i++) {
         const m = models[i];
         if (!m) continue;
+        const isCurrent = m.id === currentModel || currentModel.includes(m.id);
+        const color = isCurrent ? G : D;
+        const marker = isCurrent ? ` ${G}(current)${R}` : '';
         const desc = m.description ? `  — ${m.description}` : '';
-        lines.push(`  ${i + 1}. ${m.id}${desc}`);
+        lines.push(`  ${color}${i + 1}. ${m.id}${R}${desc}${marker}`);
       }
     }
 
     if (adapterId === 'codex') {
+      const currentEffort = settings2.codexEffort || '';
+      const efforts = [
+        { key: 'a', name: 'low' },
+        { key: 'b', name: 'medium' },
+        { key: 'c', name: 'high' },
+        { key: 'd', name: 'xhigh' },
+      ];
       lines.push('');
       lines.push('Effort (optional):');
-      lines.push('  [a] low   [b] medium   [c] high   [d] xhigh');
+      const effortLine = efforts
+        .map((e) => {
+          const isCurrent = e.name === currentEffort;
+          return isCurrent ? `${G}${e.key}. ${e.name} (current)${R}` : `${e.key}. ${e.name}`;
+        })
+        .join('   ');
+      lines.push(`  ${effortLine}`);
     }
 
     if (models.length === 0) {

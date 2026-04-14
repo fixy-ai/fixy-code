@@ -258,16 +258,6 @@ async function main(): Promise<void> {
   registry.register(createGeminiAdapter());
 
   // Collect active model names from each adapter (best-effort, null if unavailable).
-  const adapterList = registry.list();
-  const modelEntries = await Promise.all(
-    adapterList.map(async (a) => {
-      const model =
-        typeof a.getActiveModel === 'function' ? await a.getActiveModel() : null;
-      return [a.id, model] as [string, string | null];
-    }),
-  );
-  const models: Record<string, string | null> = Object.fromEntries(modelEntries);
-
   // First-run onboarding: show wizard if settings.json doesn't exist yet.
   const isFirstRun = !existsSync(settingsPath());
   if (isFirstRun) {
@@ -275,6 +265,24 @@ async function main(): Promise<void> {
   }
 
   const settings = await loadSettings();
+
+  // Collect active model names: prefer Fixy settings, fallback to adapter detection.
+  const adapterList = registry.list();
+  const fixyModels: Record<string, string> = {
+    claude: settings.claudeModel,
+    codex: settings.codexModel,
+    gemini: settings.geminiModel,
+  };
+  const modelEntries = await Promise.all(
+    adapterList.map(async (a) => {
+      const fixyModel = fixyModels[a.id]?.trim() || null;
+      if (fixyModel) return [a.id, fixyModel] as [string, string | null];
+      const model =
+        typeof a.getActiveModel === 'function' ? await a.getActiveModel() : null;
+      return [a.id, model] as [string, string | null];
+    }),
+  );
+  const models: Record<string, string | null> = Object.fromEntries(modelEntries);
 
   const thread = threadId
     ? await store.getThread(threadId, projectRoot)
