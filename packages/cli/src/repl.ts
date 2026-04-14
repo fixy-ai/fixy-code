@@ -647,9 +647,16 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (rawInput.length === 0) continue;
 
     // Lowercase @mentions and /commands for case-insensitive matching
-    const normalized = rawInput
+    let normalized = rawInput
       .replace(/@\w+/g, (m) => m.toLowerCase())
       .replace(/^\/\w+/g, (m) => m.toLowerCase());
+
+    // Auto-resolve partial /commands to first match (e.g. /qu → /quit, /a → /all)
+    if (normalized.startsWith('/') && !normalized.includes(' ')) {
+      const match = SLASH_MENU.find((item) => item.name.startsWith(normalized));
+      if (match) normalized = match.name;
+    }
+
     const input = normalized.startsWith('/') ? `@fixy ${normalized}` : normalized;
 
     if (normalized === '/quit' || normalized === '/exit') {
