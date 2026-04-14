@@ -610,10 +610,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
     try {
       thread = await store.getThread(thread.id, thread.projectRoot);
-      // Show spinner only when an external agent will respond (not for @fixy commands)
+      // Show spinner while waiting for agent response
       const isFixyCommand = /^@fixy\s*\//.test(input);
       const isAllCommand = /@all\b/i.test(input) || /^@fixy\s+\/all\b/.test(input);
-      if (!isFixyCommand && !isAllCommand) {
+      if (isAllCommand) {
+        spinner.start('@all');
+      } else if (!isFixyCommand) {
         const mentionMatch = input.match(/^@(\w+)/);
         const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
         spinner.start(`@${targetAgent}`);
@@ -629,9 +631,15 @@ export async function startRepl(params: ReplParams): Promise<void> {
           if (!headerPrinted && _stream === 'stdout') {
             spinner?.stop();
             spinner = null;
-            // Skip the redundant @header for @all — it prints its own ── @agent ── separators
-            if (!isAllCommand) {
-              process.stdout.write(`\x1b[38;5;105m@${agentId ?? ''}\x1b[0m\n`);
+            // Skip the redundant @header for @all — it prints its own @agent: labels
+            if (!isAllCommand && agentId) {
+              const AGENT_COLORS: Record<string, string> = {
+                claude: '\x1b[38;5;208m',  // orange
+                codex: '\x1b[38;5;75m',    // light blue
+                gemini: '\x1b[38;5;141m',  // purple
+              };
+              const color = AGENT_COLORS[agentId] ?? '\x1b[38;5;105m';
+              process.stdout.write(`${color}@${agentId}:\x1b[0m\n`);
             }
             headerPrinted = true;
           }
