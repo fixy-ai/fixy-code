@@ -101,6 +101,7 @@ const MENU_HIGHLIGHT_BG = '\x1b[48;5;236m'; // dark gray bg for selected item
 const MENU_RESET = '\x1b[0m';
 
 const SLASH_MENU: Array<{ name: string; desc: string }> = [
+  { name: '/agents',   desc: 'Enable/disable agents (/ag)' },
   { name: '/all',      desc: 'Run collaboration engine on all agents (/a)' },
   { name: '/worker',   desc: 'Set the worker adapter (/w)' },
   { name: '/model',    desc: 'View or change adapter models (/m)' },
@@ -671,6 +672,36 @@ export async function startRepl(params: ReplParams): Promise<void> {
     // Normalize: lowercase @mentions and /commands, preserve message body case
     const rawInput = line.trim();
     if (rawInput.length === 0) continue;
+
+    // Shell command execution: !command
+    if (rawInput.startsWith('!')) {
+      const shellCmd = rawInput.slice(1).trim();
+      if (shellCmd.length === 0) {
+        process.stdout.write('\x1b[2musage: !<command>\x1b[0m\n');
+        continue;
+      }
+      try {
+        const { execSync } = await import('node:child_process');
+        const output = execSync(shellCmd, {
+          cwd: params.projectRoot,
+          timeout: 30_000,
+          encoding: 'utf8',
+          stdio: ['inherit', 'pipe', 'pipe'],
+        });
+        if (output) process.stdout.write(output);
+      } catch (err: unknown) {
+        const execErr = err as { stderr?: string; status?: number; killed?: boolean };
+        if (execErr.killed) {
+          process.stdout.write('\x1b[2;31mCommand timed out\x1b[0m\n');
+        } else {
+          if (execErr.stderr) process.stdout.write(`\x1b[2;31m${execErr.stderr}\x1b[0m`);
+          if (typeof execErr.status === 'number' && execErr.status !== 0) {
+            process.stdout.write(`\x1b[2;31mExit code: ${execErr.status}\x1b[0m\n`);
+          }
+        }
+      }
+      continue;
+    }
 
     // Lowercase @mentions and /commands for case-insensitive matching
     let normalized = rawInput

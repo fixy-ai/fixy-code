@@ -115,6 +115,10 @@ export class FixyCommandRunner {
       case '/shortcuts':
         await this._handleShortcuts(ctx);
         break;
+      case '/agents':
+      case '/ag':
+        await this._handleAgents(args, ctx);
+        break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
     }
@@ -166,7 +170,9 @@ export class FixyCommandRunner {
       return;
     }
 
-    const allAdapters = ctx.registry.list();
+    const settings = await loadSettings();
+    const disabledSet = new Set(settings.disabledAdapters ?? []);
+    const allAdapters = ctx.registry.list().filter((a) => !disabledSet.has(a.id));
     if (allAdapters.length === 0) {
       await this._appendSystemMessage('/all requires at least one registered adapter', ctx);
       return;
@@ -239,7 +245,6 @@ export class FixyCommandRunner {
     };
 
     // ── PHASE 1: DISCUSSION ──
-    const settings = await loadSettings();
     const discussionLog: Array<{ agentId: string; content: string }> = [];
 
     if (soloMode) {
@@ -758,6 +763,59 @@ export class FixyCommandRunner {
     }
   }
 
+  private async _handleAgents(args: string, ctx: FixyCommandContext): Promise<void> {
+    const settings = await loadSettings();
+    const adapters = ctx.registry.list();
+    const disabled = new Set(settings.disabledAdapters ?? []);
+
+    // No args: list all agents with status
+    if (!args.trim()) {
+      const lines: string[] = ['Agents:'];
+      for (const adapter of adapters) {
+        const isDisabled = disabled.has(adapter.id);
+        const status = isDisabled
+          ? '\x1b[2mdisabled\x1b[0m'
+          : '\x1b[38;5;114menabled\x1b[0m';
+        lines.push(`  @${adapter.id.padEnd(10)} ${status}`);
+      }
+      lines.push('');
+      lines.push('Usage: /agents enable <name> | /agents disable <name>');
+      await this._appendSystemMessage(lines.join('\n'), ctx);
+      return;
+    }
+
+    const parts = args.trim().split(/\s+/);
+    const subCommand = parts[0]?.toLowerCase();
+    const agentName = parts[1]?.toLowerCase();
+
+    if ((subCommand === 'enable' || subCommand === 'disable') && agentName) {
+      // Validate agent exists
+      if (!ctx.registry.get(agentName)) {
+        await this._appendSystemMessage(`Unknown agent: @${agentName}`, ctx);
+        return;
+      }
+
+      if (subCommand === 'enable') {
+        disabled.delete(agentName);
+        await saveSettings({ ...settings, disabledAdapters: [...disabled] });
+        await this._appendSystemMessage(`@${agentName} enabled`, ctx);
+      } else {
+        // Cannot disable all agents
+        const enabledCount = adapters.filter((a) => !disabled.has(a.id)).length;
+        if (enabledCount <= 1 && !disabled.has(agentName)) {
+          await this._appendSystemMessage('Cannot disable all agents — at least one must remain enabled', ctx);
+          return;
+        }
+        disabled.add(agentName);
+        await saveSettings({ ...settings, disabledAdapters: [...disabled] });
+        await this._appendSystemMessage(`@${agentName} disabled`, ctx);
+      }
+      return;
+    }
+
+    await this._appendSystemMessage('Usage: /agents | /agents enable <name> | /agents disable <name>', ctx);
+  }
+
   private async _showModelSelectionUI(
     adapterId: string,
     ctx: FixyCommandContext,
@@ -1052,6 +1110,7 @@ export class FixyCommandRunner {
       '    /rename (/rn)          Rename current session',
       '    /fork (/fk)            Fork current session',
       '    /status (/st)          Show adapter status',
+      '    /agents (/ag)          Enable/disable agents',
       '    /help (/h)             Show this help',
       '    /account               View account & plan',
       '    /upgrade               Open plan management',
