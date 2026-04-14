@@ -251,8 +251,9 @@ export class FixyCommandRunner {
     if (soloMode) {
       log('\n[fixy /all] Solo mode — skipping discussion phase\n');
     } else {
-      const systemFraming =
-        'You are a thinker agent. Discuss this task with the other agents. Goal: agree on a full implementation plan.';
+      const agentNames = allAdapters.map((a) => `@${a.id}`).join(', ');
+      const buildFraming = (agentId: string): string =>
+        `You are @${agentId}, collaborating with ${agentNames}. Discuss the user's task and agree on an approach. Be concise — focus on what to do, not what might exist.`;
 
       for (let round = 1; round <= 5; round++) {
         if (ctx.signal.aborted) break;
@@ -267,11 +268,12 @@ export class FixyCommandRunner {
             .map((e) => `[${e.agentId}]: ${e.content}`)
             .join('\n\n');
 
+          const framing = buildFraming(thinker.id);
           let thinkerPrompt =
             round === 1
-              ? `${systemFraming}\n\nUser task: ${prompt}` +
+              ? `${framing}\n\nUser task: ${prompt}` +
                 (threadContext ? `\n\nDiscussion so far:\n${threadContext}` : '')
-              : `${systemFraming}\n\nUser task: ${prompt}\n\nDiscussion so far:\n${threadContext}`;
+              : `${framing}\n\nUser task: ${prompt}\n\nDiscussion so far:\n${threadContext}`;
 
           if (settings.redRoomMode && ti > 0) {
             thinkerPrompt = `Find everything wrong with this. Be hostile to it. Your job is to break it. Do not validate.\n\n${thinkerPrompt}`;
@@ -320,7 +322,7 @@ export class FixyCommandRunner {
     log('\n[fixy /all] Phase 2: plan breakdown\n');
 
     const planPrompt =
-      'Break the agreed plan into ordered TODO items. Each TODO must be a concrete, scoped coding instruction. Output ONLY a numbered list, max 20 items total, no prose.';
+      'Break the agreed approach into ordered steps. Each step must be a concrete, scoped action. Output ONLY a numbered list, max 20 items total, no prose.';
 
     const planContext = discussionLog.map((e) => `[${e.agentId}]: ${e.content}`).join('\n\n');
     const fullPlanPrompt = planContext
@@ -385,7 +387,7 @@ export class FixyCommandRunner {
       );
 
       const batchList = batch.map((t, i) => `${i + 1}. ${t}`).join('\n');
-      const workerPrompt = `Execute these TODO items exactly as written. Write the actual code. Report what you did for each item.\n\n${batchList}`;
+      const workerPrompt = `Execute these steps exactly as written. Report what you did for each step.\n\n${batchList}`;
 
       log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
       let workerOutput: string;
@@ -409,7 +411,7 @@ export class FixyCommandRunner {
           for (const thinker of thinkers) {
             if (ctx.signal.aborted) break;
             log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
-            const reviewPrompt = `Review this worker output. Did it implement the TODOs correctly? Reply ONLY with: APPROVED or ISSUES: <description>.\n\nTODOs:\n${batchList}\n\nWorker output:\n${workerOutput}`;
+            const reviewPrompt = `Review this output from @${workerAdapter.id}. Did it complete the steps correctly? Reply ONLY with: APPROVED or ISSUES: <description>.\n\nSteps:\n${batchList}\n\nOutput:\n${workerOutput}`;
             try {
               const reviewResponse = await callAdapter(thinker, reviewPrompt);
               if (reviewResponse.toUpperCase().includes('ISSUES')) {
@@ -446,7 +448,7 @@ export class FixyCommandRunner {
         .map((m) => `[${m.agentId}]: ${m.content}`)
         .join('\n\n');
 
-      const finalPrompt = `This is the final output. Do a complete review. Reply ONLY with: APPROVED or ISSUES: <description>.\n\n${threadSummary}`;
+      const finalPrompt = `This is the final output from the collaboration. Do a complete review. Reply ONLY with: APPROVED or ISSUES: <description>.\n\n${threadSummary}`;
 
       const finalResults: string[] = [];
       for (const thinker of thinkers) {
@@ -667,7 +669,13 @@ export class FixyCommandRunner {
   private async _handleRedRoom(args: string, ctx: FixyCommandContext): Promise<void> {
     const trimmed = args.trim().toLowerCase();
     if (trimmed !== 'on' && trimmed !== 'off') {
-      await this._appendSystemMessage('usage: /red-room on | /red-room off', ctx);
+      const settings = await loadSettings();
+      const status = settings.redRoomMode ? 'ON' : 'OFF';
+      const color = settings.redRoomMode ? '\x1b[31m' : '\x1b[2m';
+      await this._appendSystemMessage(
+        `Red room mode: ${color}${status}\x1b[0m\nUsage: /red-room on | /red-room off`,
+        ctx,
+      );
       return;
     }
     const on = trimmed === 'on';
