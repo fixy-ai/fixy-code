@@ -183,13 +183,13 @@ describe('FixyCommandRunner', () => {
       onLog: (_s, msg) => logs.push(msg),
     }));
 
-    expect(logs.some((l) => l.includes('solo mode'))).toBe(true);
-    expect(logs.some((l) => l.includes('plan'))).toBe(true);
-    expect(logs.some((l) => l.includes('execute'))).toBe(true);
+    expect(logs.some((l) => l.includes('Solo mode'))).toBe(true);
+    expect(logs.some((l) => l.includes('Plan'))).toBe(true);
+    expect(logs.some((l) => l.includes('Execute'))).toBe(true);
 
     const fresh = await store.getThread(thread.id, thread.projectRoot);
     const completionMsg = fresh.messages.find(
-      (m) => m.role === 'system' && m.content.includes('complete'),
+      (m) => m.role === 'system' && m.content.includes('Complete'),
     );
     expect(completionMsg).toBeDefined();
   });
@@ -226,10 +226,10 @@ describe('FixyCommandRunner', () => {
     }));
 
     // Discussion should have ended early due to agreement
-    expect(logs.some((l) => l.includes('discuss'))).toBe(true);
-    expect(logs.some((l) => l.includes('plan'))).toBe(true);
-    expect(logs.some((l) => l.includes('execute'))).toBe(true);
-    expect(logs.some((l) => l.includes('final review'))).toBe(true);
+    expect(logs.some((l) => l.includes('Discuss'))).toBe(true);
+    expect(logs.some((l) => l.includes('Plan'))).toBe(true);
+    expect(logs.some((l) => l.includes('Execute'))).toBe(true);
+    expect(logs.some((l) => l.includes('Final review'))).toBe(true);
     expect(workerCalls).toBeGreaterThanOrEqual(1);
   });
 
@@ -294,7 +294,7 @@ describe('FixyCommandRunner', () => {
 
     // Worker should have been called at least twice (initial + fix)
     expect(workerCalls).toBeGreaterThanOrEqual(2);
-    expect(logs.some((l) => l.includes('review'))).toBe(true);
+    expect(logs.some((l) => l.includes('Review'))).toBe(true);
   });
 
   // -------------------------------------------------------------------------

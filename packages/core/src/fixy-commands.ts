@@ -31,7 +31,8 @@ function agentLabel(id: string): string {
 /** Dim cyan phase header — visually distinct from agent output */
 const PH = '\x1b[2;36m'; // dim cyan for phase headers
 function phaseHeader(text: string): string {
-  return `${PH}fixy · ${text}${RESET}`;
+  const capitalized = text.charAt(0).toUpperCase() + text.slice(1);
+  return `${PH}Fixy · ${capitalized}${RESET}`;
 }
 
 export interface FixyCommandContext {
