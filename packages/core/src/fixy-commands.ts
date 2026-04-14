@@ -148,13 +148,18 @@ export class FixyCommandRunner {
   private async _handleWorker(adapterId: string, ctx: FixyCommandContext): Promise<void> {
     if (!adapterId.trim()) {
       const adapters = ctx.registry.list();
+      const G = '\x1b[38;5;114m'; // green for current/selected
+      const D = '\x1b[2m';        // dim for non-selected
+      const R = '\x1b[0m';
       const currentWorker = ctx.thread.workerModel ?? 'claude';
-      const lines: string[] = ['WORKER_SELECT', `Current worker: @${currentWorker}`, '', 'Choose your default worker:'];
+      const lines: string[] = ['WORKER_SELECT', `Current worker: ${G}@${currentWorker}${R}`, '', 'Choose your default worker:'];
       for (let i = 0; i < adapters.length; i++) {
         const adapter = adapters[i];
         if (!adapter) continue;
-        const marker = adapter.id === currentWorker ? ' (current)' : '';
-        lines.push(`  ${i + 1}. @${adapter.id} — ${adapter.name}${marker}`);
+        const isCurrent = adapter.id === currentWorker;
+        const color = isCurrent ? G : D;
+        const marker = isCurrent ? ` ${G}(current)${R}` : '';
+        lines.push(`  ${color}${i + 1}. @${adapter.id}${R} — ${adapter.name}${marker}`);
       }
       await this._appendSystemMessage(lines.join('\n'), ctx);
       return;
@@ -811,8 +816,12 @@ export class FixyCommandRunner {
       } else {
         currentModel = (await adapter.getActiveModel?.()) || 'default';
       }
-      const status = isDisabled ? 'disabled' : 'enabled';
-      lines.push(`  ${i + 1}. @${adapter.id.padEnd(8)} ${currentModel.padEnd(16)} ${status}`);
+      const G = '\x1b[38;5;114m';
+      const DM = '\x1b[2m';
+      const R = '\x1b[0m';
+      const statusColor = isDisabled ? DM : G;
+      const statusText = isDisabled ? 'disabled' : 'enabled';
+      lines.push(`  ${statusColor}${i + 1}. @${adapter.id.padEnd(8)} ${currentModel.padEnd(16)} ${statusText}${R}`);
     }
 
     lines.push('');
@@ -1275,16 +1284,21 @@ export class FixyCommandRunner {
     }
 
     // List all threads with interactive selection
+    const G = '\x1b[38;5;114m';
+    const D = '\x1b[2m';
+    const R = '\x1b[0m';
     const lines = ['THREAD_SELECT', 'Your sessions:'];
     for (let i = 0; i < threads.length; i++) {
       const t = threads[i];
       if (!t) continue;
-      const current = t.id === ctx.thread.id ? ' (current)' : '';
+      const isCurrent = t.id === ctx.thread.id;
+      const color = isCurrent ? G : D;
+      const marker = isCurrent ? ` ${G}(current)${R}` : '';
       const date = new Date(t.updatedAt).toLocaleDateString();
       const msgs = t.messages.length;
       const nameLabel = t.name ? `${t.name} ` : '';
       lines.push(
-        `  ${i + 1}. ${nameLabel}${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`,
+        `  ${color}${i + 1}. ${nameLabel}${t.id.slice(0, 8)}…${R} — ${msgs} messages — ${date}${marker}`,
       );
     }
     lines.push('', 'Choose a number to switch, or Enter to dismiss');
