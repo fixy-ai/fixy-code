@@ -233,11 +233,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
         lines.push(indicator);
       }
 
-      // Draw below, then move cursor back up using relative movement (scroll-safe)
-      process.stdout.write('\n' + lines.join('\n') + `\x1b[${lines.length}A`);
-      // Restore cursor column by refreshing readline's display
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      (rl as any)._refreshLine();
+      // Draw below, then move cursor back up using relative movement (scroll-safe).
+      // Do NOT use _refreshLine() — it calls clearScreenDown() which erases the menu.
+      process.stdout.write('\n' + lines.join('\n'));
+      // Move back up and restore cursor column (prompt visual width = 3 + cursor pos)
+      const col = 3 + rl.line.length;
+      process.stdout.write(`\x1b[${lines.length}A\r\x1b[${col}C`);
       menuHeight = lines.length;
     };
 
