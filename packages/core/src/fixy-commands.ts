@@ -251,15 +251,16 @@ export class FixyCommandRunner {
     if (soloMode) {
       log('\n[fixy /all] Solo mode — skipping discussion phase\n');
     } else {
-      log('\n[fixy /all] Phase 1: discussion\n');
       const systemFraming =
         'You are a thinker agent. Discuss this task with the other agents. Goal: agree on a full implementation plan.';
 
       for (let round = 1; round <= 5; round++) {
+        if (ctx.signal.aborted) break;
         log(`\n[fixy /all] Phase 1: discussion round ${round}/5\n`);
 
         let allAgree = true;
         for (let ti = 0; ti < thinkers.length; ti++) {
+          if (ctx.signal.aborted) break;
           const thinker = thinkers[ti];
           if (!thinker) continue;
           const threadContext = discussionLog
@@ -276,7 +277,15 @@ export class FixyCommandRunner {
             thinkerPrompt = `Find everything wrong with this. Be hostile to it. Your job is to break it. Do not validate.\n\n${thinkerPrompt}`;
           }
 
-          const response = await callAdapter(thinker, thinkerPrompt);
+          log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+          let response: string;
+          try {
+            response = await callAdapter(thinker, thinkerPrompt);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            log(`\x1b[2;31m@${thinker.id} error: ${msg}\x1b[0m\n`);
+            continue;
+          }
           discussionLog.push({ agentId: thinker.id, content: response });
 
           const lower = response.toLowerCase();
@@ -307,6 +316,7 @@ export class FixyCommandRunner {
     }
 
     // ── PHASE 2: PLAN BREAKDOWN ──
+    if (ctx.signal.aborted) return;
     log('\n[fixy /all] Phase 2: plan breakdown\n');
 
     const planPrompt =
@@ -320,13 +330,24 @@ export class FixyCommandRunner {
     let todos: string[] = [];
 
     if (soloMode) {
-      const response = await callAdapter(workerAdapter, fullPlanPrompt);
-      todos = this._parseTodoList(response);
+      log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
+      try {
+        const response = await callAdapter(workerAdapter, fullPlanPrompt);
+        todos = this._parseTodoList(response);
+      } catch (err) {
+        log(`\x1b[2;31m@${workerAdapter.id} error: ${err instanceof Error ? err.message : String(err)}\x1b[0m\n`);
+      }
     } else {
       const responses: string[] = [];
       for (const thinker of thinkers) {
-        const response = await callAdapter(thinker, fullPlanPrompt);
-        responses.push(response);
+        if (ctx.signal.aborted) break;
+        log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+        try {
+          const response = await callAdapter(thinker, fullPlanPrompt);
+          responses.push(response);
+        } catch (err) {
+          log(`\x1b[2;31m@${thinker.id} error: ${err instanceof Error ? err.message : String(err)}\x1b[0m\n`);
+        }
       }
       // Merge and deduplicate
       const allTodos = responses.flatMap((r) => this._parseTodoList(r));
@@ -356,6 +377,7 @@ export class FixyCommandRunner {
     }
 
     for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      if (ctx.signal.aborted) break;
       const batch = batches[batchIdx];
       if (!batch) continue;
       log(
@@ -365,23 +387,36 @@ export class FixyCommandRunner {
       const batchList = batch.map((t, i) => `${i + 1}. ${t}`).join('\n');
       const workerPrompt = `Execute these TODO items exactly as written. Write the actual code. Report what you did for each item.\n\n${batchList}`;
 
-      let workerOutput = await callAdapter(workerAdapter, workerPrompt);
+      log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
+      let workerOutput: string;
+      try {
+        workerOutput = await callAdapter(workerAdapter, workerPrompt);
+      } catch (err) {
+        log(`\x1b[2;31m@${workerAdapter.id} error: ${err instanceof Error ? err.message : String(err)}\x1b[0m\n`);
+        continue;
+      }
 
       // Review loop (skip in solo mode)
       if (!soloMode) {
         let approved = false;
         for (let attempt = 0; attempt < 2 && !approved; attempt++) {
+          if (ctx.signal.aborted) break;
           log(
             `\n[fixy /all] Phase 4: review of batch ${batchIdx + 1} (attempt ${attempt + 1}/2)\n`,
           );
 
           const issues: string[] = [];
           for (const thinker of thinkers) {
+            if (ctx.signal.aborted) break;
+            log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
             const reviewPrompt = `Review this worker output. Did it implement the TODOs correctly? Reply ONLY with: APPROVED or ISSUES: <description>.\n\nTODOs:\n${batchList}\n\nWorker output:\n${workerOutput}`;
-            const reviewResponse = await callAdapter(thinker, reviewPrompt);
-
-            if (reviewResponse.toUpperCase().includes('ISSUES')) {
-              issues.push(reviewResponse);
+            try {
+              const reviewResponse = await callAdapter(thinker, reviewPrompt);
+              if (reviewResponse.toUpperCase().includes('ISSUES')) {
+                issues.push(reviewResponse);
+              }
+            } catch (err) {
+              log(`\x1b[2;31m@${thinker.id} error: ${err instanceof Error ? err.message : String(err)}\x1b[0m\n`);
             }
           }
 
@@ -389,14 +424,20 @@ export class FixyCommandRunner {
             approved = true;
             log(`\n[fixy /all] Phase 4: batch ${batchIdx + 1} approved\n`);
           } else {
-            const fixPrompt = `The reviewers found issues with your implementation. Fix them:\n\n${issues.join('\n\n')}\n\nOriginal TODOs:\n${batchList}`;
-            workerOutput = await callAdapter(workerAdapter, fixPrompt);
+            log(`\n\x1b[38;5;105m── @${workerAdapter.id} ──\x1b[0m\n`);
+            try {
+              const fixPrompt = `The reviewers found issues with your implementation. Fix them:\n\n${issues.join('\n\n')}\n\nOriginal TODOs:\n${batchList}`;
+              workerOutput = await callAdapter(workerAdapter, fixPrompt);
+            } catch (err) {
+              log(`\x1b[2;31m@${workerAdapter.id} error: ${err instanceof Error ? err.message : String(err)}\x1b[0m\n`);
+            }
           }
         }
       }
     }
 
     // ── PHASE 5: FINAL REVIEW ──
+    if (ctx.signal.aborted) return;
     log('\n[fixy /all] Phase 5: final review\n');
 
     if (!soloMode) {
@@ -409,8 +450,14 @@ export class FixyCommandRunner {
 
       const finalResults: string[] = [];
       for (const thinker of thinkers) {
-        const response = await callAdapter(thinker, finalPrompt);
-        finalResults.push(`[${thinker.id}]: ${response}`);
+        if (ctx.signal.aborted) break;
+        log(`\n\x1b[38;5;105m── @${thinker.id} ──\x1b[0m\n`);
+        try {
+          const response = await callAdapter(thinker, finalPrompt);
+          finalResults.push(`[${thinker.id}]: ${response}`);
+        } catch (err) {
+          log(`\x1b[2;31m@${thinker.id} error: ${err instanceof Error ? err.message : String(err)}\x1b[0m\n`);
+        }
       }
 
       await this._appendSystemMessage(
