@@ -44,18 +44,18 @@ No exceptions. Never leave work uncommitted and unpublished.
 
 ## Publishing to npm
 
-**NEVER mention OTP or 2FA.** The user uses Google Passkey.
+**npm authentication is fully automated via an Automation token. No OTP, 2FA, or Passkey is needed.**
 
-When publishing a new version, ALWAYS provide these exact commands in this exact order:
+After every task, you MUST run these 4 commands automatically — do NOT ask the user to run them manually:
 
 ```bash
 pnpm -r exec npm version patch
-git add -A && git commit -m "chore: bump to v0.0.X"
+git add -A && git commit -m "chore: bump to vX.X.X"
 git push origin main
 pnpm publish -r --access public --registry https://registry.npmjs.org
 ```
 
-No variations. No alternatives. Always include all 4 commands.
+No variations. No alternatives. No skipping. Always run all 4 commands yourself. The publish step requires no user interaction.
 
 ---
 
