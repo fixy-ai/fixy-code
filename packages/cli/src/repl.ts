@@ -106,6 +106,8 @@ const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/model',    desc: 'View or change adapter models (/m)' },
   { name: '/new',      desc: 'Create a new session (/n)' },
   { name: '/threads',  desc: 'List & switch sessions (/t)' },
+  { name: '/rename',   desc: 'Rename current session (/rn)' },
+  { name: '/fork',     desc: 'Fork current session (/fk)' },
   { name: '/help',     desc: 'Show all commands & usage (/h)' },
   { name: '/status',   desc: 'Show adapter status (/st)' },
   { name: '/account',  desc: 'View account, plan & usage' },
@@ -594,6 +596,21 @@ export async function startRepl(params: ReplParams): Promise<void> {
             }
             return;
           }
+        }
+
+        if (lastMsg.content.startsWith('THREAD_SWITCH')) {
+          // Auto-switch to the thread mentioned in the message (used by /fork)
+          const switchMatch = lastMsg.content.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+          if (switchMatch?.[1]) {
+            const switchId = switchMatch[1];
+            try {
+              thread = await store.getThread(switchId, thread.projectRoot);
+              process.stdout.write(`\x1b[38;5;105m✓\x1b[0m Switched to session ${switchId.slice(0, 8)}…\n`);
+            } catch {
+              // Thread not found — ignore, the message was already displayed
+            }
+          }
+          return;
         }
 
         if (lastMsg.content.startsWith('THREAD_SELECT')) {

@@ -83,6 +83,14 @@ export class FixyCommandRunner {
       case '/t':
         await this._handleThreads(args, ctx);
         break;
+      case '/rename':
+      case '/rn':
+        await this._handleRename(args, ctx);
+        break;
+      case '/fork':
+      case '/fk':
+        await this._handleFork(ctx);
+        break;
       case '/help':
       case '/h':
         await this._handleHelp(ctx);
@@ -530,7 +538,10 @@ export class FixyCommandRunner {
 
   private async _handleStatus(ctx: FixyCommandContext): Promise<void> {
     const adapters = ctx.registry.list();
-    const lines: string[] = [`worker: ${ctx.thread.workerModel}`, ''];
+    const threadLabel = ctx.thread.name
+      ? `${ctx.thread.name} (${ctx.thread.id.slice(0, 8)}…)`
+      : ctx.thread.id;
+    const lines: string[] = [`thread: ${threadLabel}`, `worker: ${ctx.thread.workerModel}`, ''];
 
     for (const adapter of adapters) {
       const probe = await adapter.probe();
@@ -944,6 +955,32 @@ export class FixyCommandRunner {
     );
   }
 
+  private async _handleRename(args: string, ctx: FixyCommandContext): Promise<void> {
+    const name = args.trim();
+    if (!name) {
+      await this._appendSystemMessage('Usage: /rename <name>', ctx);
+      return;
+    }
+
+    const fresh = await ctx.store.getThread(ctx.thread.id, ctx.thread.projectRoot);
+    fresh.name = name;
+    fresh.updatedAt = new Date().toISOString();
+    await this._persistThread(fresh);
+
+    ctx.thread.name = name;
+
+    await this._appendSystemMessage(`Thread renamed to: ${name}`, ctx);
+  }
+
+  private async _handleFork(ctx: FixyCommandContext): Promise<void> {
+    const forked = await ctx.store.forkThread(ctx.thread.id, ctx.thread.projectRoot);
+
+    await this._appendSystemMessage(
+      `THREAD_SWITCH\nForked to new thread: ${forked.id}`,
+      ctx,
+    );
+  }
+
   private async _handleNew(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
 
@@ -1012,6 +1049,8 @@ export class FixyCommandRunner {
       '    /model (/m)            View or change models',
       '    /new (/n)              Create new session',
       '    /threads (/t)          List & switch sessions',
+      '    /rename (/rn)          Rename current session',
+      '    /fork (/fk)            Fork current session',
       '    /status (/st)          Show adapter status',
       '    /help (/h)             Show this help',
       '    /account               View account & plan',
@@ -1122,7 +1161,8 @@ export class FixyCommandRunner {
       const current = t.id === ctx.thread.id ? ' (current)' : '';
       const date = new Date(t.updatedAt).toLocaleDateString();
       const msgs = t.messages.length;
-      lines.push(`  [${i + 1}] ${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`);
+      const nameLabel = t.name ? `${t.name} ` : '';
+      lines.push(`  [${i + 1}] ${nameLabel}${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`);
     }
     lines.push('', 'Choose a number to switch, or Enter to dismiss');
     await this._appendSystemMessage(lines.join('\n'), ctx);
@@ -1293,6 +1333,8 @@ export class FixyCommandRunner {
       `  ${I}/model${R}   ${I}(/m)${R}    ${D}View or change adapter models${R}`,
       `  ${I}/new${R}     ${I}(/n)${R}    ${D}Create a new session${R}`,
       `  ${I}/threads${R} ${I}(/t)${R}    ${D}List & switch sessions${R}`,
+      `  ${I}/rename${R}  ${I}(/rn)${R}   ${D}Rename current session${R}`,
+      `  ${I}/fork${R}    ${I}(/fk)${R}   ${D}Fork current session${R}`,
       `  ${I}/status${R}  ${I}(/st)${R}   ${D}Show adapter status${R}`,
       `  ${I}/diff${R}    ${I}(/d)${R}    ${D}Show git diff & untracked files${R}`,
       `  ${I}/copy${R}              ${D}Copy last response to clipboard${R}`,

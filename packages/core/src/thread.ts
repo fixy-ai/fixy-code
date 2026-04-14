@@ -12,6 +12,7 @@ export interface FixyThread {
   updatedAt: string; // ISO 8601
   title: string | null; // user-editable, null until first message
   status: 'active' | 'archived';
+  name?: string; // optional human-readable name
   workerModel: string; // current @fixy worker adapter id, e.g. "claude"
   agentSessions: Record<string, FixySession | null>; // per-adapter resume state
   worktrees: Record<string, string>; // agentId → absolute worktree path

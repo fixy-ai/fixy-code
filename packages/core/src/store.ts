@@ -137,6 +137,42 @@ export class LocalThreadStore {
   }
 
   /**
+   * Creates a new thread that copies all messages from an existing thread.
+   * The new thread gets a fresh UUID and timestamps.
+   */
+  async forkThread(sourceThreadId: string, projectRoot: string): Promise<FixyThread> {
+    const source = await this.getThread(sourceThreadId, projectRoot);
+    const id = uuidv7();
+    const now = new Date().toISOString();
+
+    const forked: FixyThread = {
+      id,
+      projectId: source.projectId,
+      projectRoot: source.projectRoot,
+      createdAt: now,
+      updatedAt: now,
+      title: source.title,
+      status: 'active',
+      workerModel: source.workerModel,
+      agentSessions: {},
+      worktrees: {},
+      messages: source.messages.map((m) => ({ ...m })),
+    };
+
+    if (source.name) {
+      forked.name = `${source.name} (fork)`;
+    }
+
+    if (source.adapterArgs) {
+      forked.adapterArgs = { ...source.adapterArgs };
+    }
+
+    await this._writeAtomic(getThreadFile(projectRoot, id), forked);
+
+    return forked;
+  }
+
+  /**
    * Sets the thread status to "archived" and persists the change.
    * Throws if the thread does not exist.
    */

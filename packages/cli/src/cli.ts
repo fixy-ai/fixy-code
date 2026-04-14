@@ -326,6 +326,7 @@ async function main(): Promise<void> {
       thread.id,
       currentWorker,
       authInfo,
+      thread.name,
     ) + '\n',
   );
 

@@ -33,6 +33,7 @@ export function startupPanel(
   threadId: string,
   worker: string,
   authInfo?: { email: string; plan: string } | null,
+  threadName?: string,
 ): string {
   const cols = Math.max(Math.min(process.stdout.columns ?? 80, 80), 52);
   const innerWidth = cols - 2;
@@ -53,7 +54,7 @@ export function startupPanel(
     `${DIM}Agents: ${agentDisplay}${RESET}`,
     `${DIM}Worker: @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
     `${DIM}Directory: ${dirDisplay}${RESET}`,
-    `${DIM}Thread: ${threadId}${RESET}`,
+    `${DIM}Thread: ${threadName ? `${threadName} (${threadId.slice(0, 8)}…)` : threadId}${RESET}`,
     authInfo
       ? `${DIM}Account: ${authInfo.email} (${authInfo.plan})${RESET}`
       : `${DIM}Account: free · /login to sign in${RESET}`,
