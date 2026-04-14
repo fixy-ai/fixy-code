@@ -154,6 +154,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   const allCompletions: string[] = [
     ...SLASH_MENU.map((m) => m.name),
+    '@worker',
     ...enabledAdapters.map((a) => `@${a.id}`),
     '@all',
     '@fixy',
@@ -175,13 +176,16 @@ export async function startRepl(params: ReplParams): Promise<void> {
     process.stdin.setRawMode(true);
     readline.emitKeypressEvents(process.stdin, rl);
 
+    const workerAgent = params.thread.workerModel ?? 'claude';
+    const workerModel = models[workerAgent] ?? '';
     const atMenu: Array<{ name: string; desc: string }> = [
+      { name: '@worker', desc: `Current worker → @${workerAgent}${workerModel ? ` (${workerModel})` : ''}` },
       ...enabledAdapters.map((a) => ({
         name: `@${a.id}`,
         desc: `${a.name}${models[a.id] ? ` (${models[a.id]})` : ''}`,
       })),
       { name: '@all', desc: 'All agents collaborate' },
-      { name: '@fixy', desc: 'Fixy worker / commands' },
+      { name: '@fixy', desc: 'Fixy commands' },
     ];
 
     let menuHeight = 0;
@@ -287,11 +291,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
     };
 
     process.stdin.on('keypress', (_str, key) => {
-      // Alt+Enter → insert newline (multi-line input)
+      // Alt+Enter or Ctrl+J → insert newline (multi-line input)
+      // Alt+Enter: key.name='return' with meta flag or \x1b prefix
+      // Ctrl+J: sends \n (0x0A) which Node parses as key.name='enter' (distinct from 'return')
       const isAltEnter =
         key?.name === 'return' &&
         (key.meta || key.sequence === '\x1b\r' || key.sequence === '\x1b\n');
-      if (isAltEnter) {
+      const isCtrlJ = key?.name === 'enter'; // \n (0x0A) — NOT 'return' (\r)
+      if (isAltEnter || isCtrlJ) {
         if (menuItems.length === 0 && !turnActive) {
           altEnterPressed = true;
           eraseMenu();
@@ -865,6 +872,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     let normalized = rawInput
       .replace(/@\w+/g, (m) => m.toLowerCase())
       .replace(/^\/\w+/g, (m) => m.toLowerCase());
+
+    // Resolve @worker to the actual worker agent
+    const currentWorker = thread.workerModel ?? 'claude';
+    normalized = normalized.replace(/@worker\b/g, `@${currentWorker}`);
 
     // Auto-resolve partial /commands to first match (e.g. /qu → /quit, /he → /help)
     // Requires at least 2 chars (e.g. "/a") to avoid bare "/" matching everything.

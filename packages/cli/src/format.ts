@@ -52,7 +52,7 @@ export function startupPanel(
   const contentLines: string[] = [
     `${BOLD}${FIXY_COLOR}Fixy v${version}${RESET}`,
     `${DIM}Agents: ${agentDisplay}${RESET}`,
-    `${DIM}Worker: @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
+    `${DIM}Worker: @worker → @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
     `${DIM}Directory: ${dirDisplay}${RESET}`,
     `${DIM}Thread: ${threadName ? `${threadName} (${threadId.slice(0, 8)}…)` : threadId}${RESET}`,
     authInfo
