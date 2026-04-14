@@ -94,9 +94,10 @@ export interface ReplParams {
   models: Record<string, string | null>;
 }
 
-// ANSI helpers for the autocomplete menu (kept local — not exported from format.ts)
+// ANSI helpers for the autocomplete menu
 const MENU_INDIGO = '\x1b[38;5;105m';
 const MENU_DIM = '\x1b[2m';
+const MENU_HIGHLIGHT_BG = '\x1b[48;5;236m'; // dark gray bg for selected item
 const MENU_RESET = '\x1b[0m';
 
 const SLASH_MENU: Array<{ name: string; desc: string }> = [
@@ -142,12 +143,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
     output: process.stdout,
     terminal: process.stdin.isTTY ?? false,
     completer: (line: string): [string[], string] => {
-      const hits = allCompletions.filter((c) => c.startsWith(line));
+      const lower = line.toLowerCase();
+      const hits = allCompletions.filter((c) => c.toLowerCase().startsWith(lower));
       return [hits.length ? hits : [], line];
     },
   });
 
-  // ── Autocomplete menus (TTY only) ──────────────────────────────────────────
+  // ── Autocomplete menus with arrow navigation (TTY only) ────────────────────
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
     readline.emitKeypressEvents(process.stdin, rl);
@@ -162,69 +164,144 @@ export async function startRepl(params: ReplParams): Promise<void> {
     ];
 
     let menuHeight = 0;
+    let menuItems: Array<{ name: string; desc: string }> = [];
+    let selectedIndex = 0;
 
     const eraseMenu = (): void => {
       if (menuHeight === 0) return;
-      // Save cursor, move down and erase each menu line, then restore cursor.
-      let seq = '\x1b[s'; // save cursor position
+      let seq = '\x1b[s';
       for (let i = 0; i < menuHeight; i++) {
-        seq += '\x1b[1B\x1b[2K'; // cursor down 1, erase entire line
+        seq += '\x1b[1B\x1b[2K';
       }
-      seq += '\x1b[u'; // restore cursor position
+      seq += '\x1b[u';
       process.stdout.write(seq);
       menuHeight = 0;
+      menuItems = [];
+      selectedIndex = 0;
     };
 
-    const drawMenu = (items: Array<{ name: string; desc: string }>): void => {
+    const drawMenu = (items: Array<{ name: string; desc: string }>, selIdx = 0): void => {
       eraseMenu();
-      const lines = items.map(
-        (item) =>
-          `  ${MENU_INDIGO}${item.name.padEnd(12)}${MENU_RESET}${MENU_DIM}${item.desc}${MENU_RESET}`,
-      );
-      // Save cursor, print menu below the current prompt line, then restore cursor.
+      menuItems = items;
+      selectedIndex = Math.min(selIdx, items.length - 1);
+      const lines = items.map((item, i) => {
+        const isSelected = i === selectedIndex;
+        const bg = isSelected ? MENU_HIGHLIGHT_BG : '';
+        const nameColor = isSelected ? MENU_INDIGO : MENU_DIM;
+        const descColor = MENU_DIM;
+        return `${bg}  ${nameColor}${item.name.padEnd(12)}${MENU_RESET}${bg}${descColor}${item.desc}${MENU_RESET}`;
+      });
       process.stdout.write('\x1b[s\n' + lines.join('\n') + '\x1b[u');
       menuHeight = lines.length;
     };
 
+    const applySelection = (): void => {
+      if (menuItems.length === 0) return;
+      const selected = menuItems[selectedIndex];
+      if (!selected) return;
+      const line = rl.line;
+
+      // Find the trigger token in the current line (last @ or leading /)
+      const lastAt = line.lastIndexOf('@');
+      const isSlash = line.startsWith('/');
+
+      eraseMenu();
+      // Clear current line and replace with selection
+      process.stdout.write('\r\x1b[2K');
+      if (isSlash) {
+        // Replace the whole /command
+        rl.write(null, { ctrl: true, name: 'u' }); // clear line
+        rl.write(selected.name + ' ');
+      } else if (lastAt >= 0) {
+        // Replace from the @ to end, preserving text before @
+        const before = line.slice(0, lastAt);
+        rl.write(null, { ctrl: true, name: 'u' });
+        rl.write(before + selected.name + ' ');
+      }
+    };
+
+    // Helper: find menu items matching a trigger
+    const getFilteredMenu = (trigger: string, menu: Array<{ name: string; desc: string }>): Array<{ name: string; desc: string }> => {
+      const lower = trigger.toLowerCase();
+      return menu.filter((item) => item.name.toLowerCase().startsWith(lower));
+    };
+
     process.stdin.on('keypress', (_str, key) => {
       if (key?.name === 'escape') {
-        eraseMenu();
+        if (menuItems.length > 0) {
+          eraseMenu();
+          return;
+        }
         if (turnActive && turnAbort) {
           turnAbort.abort();
           turnAbort = null;
           turnActive = false;
           spinner?.stop();
           spinner = null;
-          process.stdout.write('\x1b[38;5;105m⊘ cancelled\x1b[0m\n');
+          process.stdout.write('\x1b[38;5;105mCancelled\x1b[0m\n');
         } else {
+          eraseMenu();
           process.stdout.write('\r\x1b[2K');
         }
         return;
       }
+
+      // Arrow navigation in menu
+      if (menuItems.length > 0) {
+        if (key?.name === 'down') {
+          selectedIndex = (selectedIndex + 1) % menuItems.length;
+          drawMenu(menuItems, selectedIndex);
+          return;
+        }
+        if (key?.name === 'up') {
+          selectedIndex = (selectedIndex - 1 + menuItems.length) % menuItems.length;
+          drawMenu(menuItems, selectedIndex);
+          return;
+        }
+        if (key?.name === 'return') {
+          applySelection();
+          return;
+        }
+        if (key?.name === 'tab') {
+          applySelection();
+          return;
+        }
+      }
+
       if (turnActive) {
         eraseMenu();
         return;
       }
+
       // Use setImmediate so readline has already updated rl.line before we read it.
       setImmediate(() => {
         const line = rl.line;
-        if (line === '@') {
-          drawMenu(atMenu);
-        } else if (line.startsWith('/')) {
+
+        // Detect inline @ anywhere in text (last @ token)
+        const lastAt = line.lastIndexOf('@');
+        const hasSlash = line.startsWith('/');
+
+        if (hasSlash) {
+          const lower = line.toLowerCase();
           const filtered = SLASH_MENU.filter((item) =>
-            item.name.startsWith(line),
+            item.name.toLowerCase().startsWith(lower),
           );
           if (filtered.length > 0) {
             drawMenu(filtered);
           } else {
             eraseMenu();
           }
-        } else if (line.startsWith('@') && line.length > 1) {
-          const filtered = atMenu.filter((item) => item.name.startsWith(line));
-          if (filtered.length > 0) {
-            drawMenu(filtered);
+        } else if (lastAt >= 0) {
+          const atToken = line.slice(lastAt).toLowerCase();
+          if (atToken === '@') {
+            drawMenu(atMenu);
           } else {
-            eraseMenu();
+            const filtered = getFilteredMenu(atToken, atMenu);
+            if (filtered.length > 0) {
+              drawMenu(filtered);
+            } else {
+              eraseMenu();
+            }
           }
         } else {
           eraseMenu();
@@ -232,7 +309,6 @@ export async function startRepl(params: ReplParams): Promise<void> {
       });
     });
 
-    // Clear menu when the user submits a line.
     rl.on('line', () => eraseMenu());
   }
   // ──────────────────────────────────────────────────────────────────────────
@@ -255,7 +331,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       turnAbort.abort();
       turnAbort = null;
       turnActive = false;
-      process.stdout.write('\x1b[38;5;105m(turn cancelled)\x1b[0m\n');
+      process.stdout.write('\x1b[38;5;105mCancelled\x1b[0m\n');
     } else {
       process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       process.exit(0);
@@ -559,12 +635,17 @@ export async function startRepl(params: ReplParams): Promise<void> {
       break;
     }
 
-    // Auto-prefix any /command with @fixy so the router handles it.
+    // Normalize: lowercase @mentions and /commands, preserve message body case
     const rawInput = line.trim();
     if (rawInput.length === 0) continue;
-    const input = rawInput.startsWith('/') ? `@fixy ${rawInput}` : rawInput;
 
-    if (rawInput === '/quit' || rawInput === '/exit') {
+    // Lowercase @mentions and /commands for case-insensitive matching
+    const normalized = rawInput
+      .replace(/@\w+/g, (m) => m.toLowerCase())
+      .replace(/^\/\w+/g, (m) => m.toLowerCase());
+    const input = normalized.startsWith('/') ? `@fixy ${normalized}` : normalized;
+
+    if (normalized === '/quit' || normalized === '/exit') {
       process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       break;
     }
