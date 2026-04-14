@@ -169,8 +169,23 @@ class CodexAdapter implements FixyAdapter {
     if (settings.codexModel.trim().length > 0) {
       modelArgs.push('--model', settings.codexModel.trim());
     }
+    // Only pass --reasoning-effort if Codex CLI supports it (check --help output).
+    // Older versions (e.g. 0.120.0) do not have this flag.
     if (settings.codexEffort.trim().length > 0) {
-      modelArgs.push('--reasoning-effort', settings.codexEffort.trim());
+      try {
+        const helpResult = await runChildProcess({
+          command: resolvedCommand,
+          args: ['exec', '--help'],
+          cwd: process.cwd(),
+          env,
+          timeoutMs: 5_000,
+        });
+        if (helpResult.stdout.includes('reasoning-effort')) {
+          modelArgs.push('--reasoning-effort', settings.codexEffort.trim());
+        }
+      } catch {
+        // Skip effort flag if we can't verify support
+      }
     }
 
     let args: string[];
