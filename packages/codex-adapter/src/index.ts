@@ -97,13 +97,7 @@ class CodexAdapter implements FixyAdapter {
   }
 
   async listModels(): Promise<FixyModelInfo[]> {
-    const fallback: FixyModelInfo[] = [
-      { id: 'gpt-5.4', description: 'Most capable — GPT 5.4' },
-      { id: 'gpt-4o', description: 'Fast and capable' },
-      { id: 'gpt-4o-mini', description: 'Fastest and cheapest' },
-    ];
-
-    // 1. Try fixy.ai dynamic model list
+    // 1. Try fixy.ai dynamic model list (curated, always current)
     try {
       const { fetchProviderModels } = await import('@fixy/core');
       const providers = await fetchProviderModels();
@@ -115,8 +109,6 @@ class CodexAdapter implements FixyAdapter {
 
     // 2. Try OpenAI API directly
     const apiKey = process.env['OPENAI_API_KEY'];
-    let models: FixyModelInfo[] = fallback;
-
     if (apiKey) {
       try {
         const controller = new AbortController();
@@ -144,28 +136,18 @@ class CodexAdapter implements FixyAdapter {
             .sort((a, b) => (a.id < b.id ? 1 : -1))
             .map((m) => ({ id: m.id }));
 
-          if (fetched.length > 0) models = fetched;
+          if (fetched.length > 0) return fetched;
         }
-      } catch {
-        // Fall through to fallback
-      }
+      } catch { /* API failed — continue */ }
     }
 
-    // Prepend current model from config if not already in list
-    try {
-      const configPath = path.join(os.homedir(), '.codex', 'config.toml');
-      const raw = await fs.readFile(configPath, 'utf8');
-      const modelMatch = /^model\s*=\s*"([^"]+)"/m.exec(raw);
-      if (modelMatch) {
-        const currentModel = modelMatch[1] ?? '';
-        if (!models.some((m) => m.id === currentModel)) {
-          models = [{ id: currentModel }, ...models];
-        }
-      }
-    } catch {
-      // Config not found — use list as-is
+    // 3. Read current model from Codex config
+    const current = await this.getActiveModel();
+    const models: FixyModelInfo[] = [];
+    if (current) {
+      const name = current.split(' ')[0] ?? current;
+      models.push({ id: name, description: 'Currently active' });
     }
-
     return models;
   }
 

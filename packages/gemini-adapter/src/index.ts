@@ -1,5 +1,8 @@
 // packages/gemini-adapter/src/index.ts
 
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import type {
   FixyAdapter,
   FixyModelInfo,
@@ -102,14 +105,7 @@ class GeminiAdapter implements FixyAdapter {
   }
 
   async listModels(): Promise<FixyModelInfo[]> {
-    const fallback: FixyModelInfo[] = [
-      { id: 'gemini-3-pro', description: 'Most capable Gemini model' },
-      { id: 'gemini-3-flash', description: 'Fast and efficient' },
-      { id: 'gemini-2.5-pro', description: 'Previous gen — Gemini 2.5 Pro' },
-      { id: 'gemini-2.5-flash', description: 'Previous gen — Gemini 2.5 Flash' },
-    ];
-
-    // 1. Try fixy.ai dynamic model list
+    // 1. Try fixy.ai dynamic model list (curated, always current)
     try {
       const { fetchProviderModels } = await import('@fixy/core');
       const providers = await fetchProviderModels();
@@ -119,38 +115,58 @@ class GeminiAdapter implements FixyAdapter {
       }
     } catch { /* fixy.ai unreachable — continue */ }
 
-    // 2. Try Google API directly
+    // 2. Try Google API — using API key from env or OAuth token from Gemini CLI
     const apiKey = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'];
-    if (!apiKey) return fallback;
-
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5_000);
-      let response: Response;
+    let oauthToken: string | null = null;
+    if (!apiKey) {
       try {
-        response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
-          { signal: controller.signal },
-        );
-      } finally {
-        clearTimeout(timer);
-      }
-
-      if (!response.ok) return fallback;
-
-      const json = (await response.json()) as {
-        models: Array<{ name: string; displayName: string }>;
-      };
-      const apiModels = (json.models ?? [])
-        .filter((m) => m.name.includes('gemini'))
-        .map((m) => ({
-          id: m.name.replace(/^models\//, ''),
-          description: m.displayName,
-        }));
-      return apiModels.length > 0 ? apiModels : fallback;
-    } catch {
-      return fallback;
+        const credsPath = path.join(os.homedir(), '.gemini', 'oauth_creds.json');
+        const raw = await fs.readFile(credsPath, 'utf8');
+        const creds = JSON.parse(raw) as { access_token?: string };
+        oauthToken = creds.access_token ?? null;
+      } catch { /* no oauth creds */ }
     }
+
+    if (apiKey || oauthToken) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5_000);
+        const url = apiKey
+          ? `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`
+          : 'https://generativelanguage.googleapis.com/v1beta/models';
+        const headers: Record<string, string> = {};
+        if (!apiKey && oauthToken) {
+          headers['Authorization'] = `Bearer ${oauthToken}`;
+        }
+        let response: Response;
+        try {
+          response = await fetch(url, { headers, signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+
+        if (response.ok) {
+          const json = (await response.json()) as {
+            models: Array<{ name: string; displayName: string }>;
+          };
+          const apiModels = (json.models ?? [])
+            .filter((m) => m.name.includes('gemini'))
+            .map((m) => ({
+              id: m.name.replace(/^models\//, ''),
+              description: m.displayName,
+            }));
+          if (apiModels.length > 0) return apiModels;
+        }
+      } catch { /* API failed — continue */ }
+    }
+
+    // 3. Read current model from Gemini CLI
+    const current = await this.getActiveModel();
+    const models: FixyModelInfo[] = [];
+    if (current) {
+      models.push({ id: current, description: 'Currently active' });
+    }
+    return models;
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {

@@ -101,14 +101,7 @@ class ClaudeAdapter implements FixyAdapter {
   }
 
   async listModels(): Promise<FixyModelInfo[]> {
-    const fallback: FixyModelInfo[] = [
-      { id: 'claude-opus-4-6', description: 'Most capable — best for complex tasks' },
-      { id: 'claude-sonnet-4-6', description: 'Balanced speed and intelligence' },
-      { id: 'claude-haiku-4-5', description: 'Fastest and most compact' },
-      { id: 'claude-sonnet-4-5', description: 'Previous gen — Sonnet 4.5' },
-    ];
-
-    // 1. Try fixy.ai dynamic model list
+    // 1. Try fixy.ai dynamic model list (curated, always current)
     try {
       const { fetchProviderModels } = await import('@fixy/core');
       const providers = await fetchProviderModels();
@@ -120,36 +113,42 @@ class ClaudeAdapter implements FixyAdapter {
 
     // 2. Try Anthropic API directly
     const apiKey = process.env['ANTHROPIC_API_KEY'];
-    if (!apiKey) return fallback;
-
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5_000);
-      let response: Response;
+    if (apiKey) {
       try {
-        response = await fetch('https://api.anthropic.com/v1/models', {
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5_000);
+        let response: Response;
+        try {
+          response = await fetch('https://api.anthropic.com/v1/models', {
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
 
-      if (!response.ok) return fallback;
-
-      const json = (await response.json()) as { data: Array<{ id: string; display_name: string }> };
-      const models = (json.data ?? [])
-        .filter((m) => m.id.startsWith('claude-'))
-        .sort((a, b) => (a.id < b.id ? 1 : -1))
-        .map((m) => ({ id: m.id, description: m.display_name }));
-
-      return models.length > 0 ? models : fallback;
-    } catch {
-      return fallback;
+        if (response.ok) {
+          const json = (await response.json()) as { data: Array<{ id: string; display_name: string }> };
+          const models = (json.data ?? [])
+            .filter((m) => m.id.startsWith('claude-'))
+            .sort((a, b) => (a.id < b.id ? 1 : -1))
+            .map((m) => ({ id: m.id, description: m.display_name }));
+          if (models.length > 0) return models;
+        }
+      } catch { /* API failed — continue */ }
     }
+
+    // 3. Read current model from Claude config + known aliases
+    const current = await this.getActiveModel();
+    return [
+      { id: 'opus', description: 'Alias for latest Opus' },
+      { id: 'sonnet', description: 'Alias for latest Sonnet' },
+      { id: 'haiku', description: 'Alias for latest Haiku' },
+      ...(current ? [{ id: current, description: 'Currently active' }] : []),
+    ];
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
