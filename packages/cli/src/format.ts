@@ -78,10 +78,18 @@ export function startupPanel(
   return [top, ...contentLines.map(padLine), bottom, hints].join('\n');
 }
 
+// Agent brand colors for spinner labels
+const SPINNER_AGENT_COLORS: Record<string, string> = {
+  claude: '\x1b[38;5;208m',  // orange
+  codex: '\x1b[38;5;75m',    // light blue
+  gemini: '\x1b[38;5;141m',  // purple
+};
+
 export function createSpinner(): { start(label: string): void; stop(): void } {
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let frameIndex = 0;
+  let startTime = 0;
 
   if (!process.stdout.isTTY) {
     return {
@@ -93,9 +101,16 @@ export function createSpinner(): { start(label: string): void; stop(): void } {
   return {
     start(label: string): void {
       frameIndex = 0;
+      startTime = Date.now();
+      // Get brand color for the agent (strip @ prefix for lookup)
+      const agentId = label.replace('@', '');
+      const agentColor = SPINNER_AGENT_COLORS[agentId] ?? FIXY_COLOR;
       intervalId = setInterval(() => {
         const frame = frames[frameIndex % frames.length] ?? frames[0] ?? '⠋';
-        process.stdout.write(`\r${FIXY_COLOR}${frame}${RESET} ${label}`);
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const timer = elapsed > 0 ? `${elapsed}s` : '';
+        const timerPart = timer ? ` ${DIM}(${timer} · ESC to cancel)${RESET}` : '';
+        process.stdout.write(`\r\x1b[2K${FIXY_COLOR}${frame}${RESET} ${agentColor}${label}${RESET} ${DIM}thinking...${RESET}${timerPart}`);
         frameIndex++;
       }, 100);
     },

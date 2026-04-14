@@ -477,8 +477,8 @@ export async function startRepl(params: ReplParams): Promise<void> {
     const adapterMatch = msgContent.match(/^MODEL_SELECT @(\w+)/);
     const adapterId = adapterMatch?.[1] ?? thread.workerModel;
 
-    // Parse model numbers from list
-    const modelMatches = [...msgContent.matchAll(/\[(\d+)\]\s+([\w.-]+)/g)];
+    // Parse model numbers from list (format: "1. model-name")
+    const modelMatches = [...msgContent.matchAll(/(\d+)\.\s+([\w.-]+)/g)];
     const modelCount = modelMatches.length;
     const hasEffort = msgContent.includes('Effort (optional)');
 
@@ -514,7 +514,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     let effortLetter = '';
     if (hasEffort) {
       const effortRaw = await askChoice(
-        '\x1b[38;5;105m[a-d] effort or Enter to skip\x1b[0m ',
+        '\x1b[38;5;105ma-d effort or Enter to skip\x1b[0m ',
         signal,
       );
       if (effortRaw === null) return null;
