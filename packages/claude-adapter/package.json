@@ -1,6 +1,6 @@
 {
   "name": "@fixy/claude-adapter",
-  "version": "0.0.81",
+  "version": "0.0.82",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
