@@ -287,19 +287,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
     };
 
     process.stdin.on('keypress', (_str, key) => {
-      // Alt+Enter or Ctrl+J → insert newline (multi-line input)
+      // Alt+Enter → insert newline (multi-line input)
       const isAltEnter =
         key?.name === 'return' &&
         (key.meta || key.sequence === '\x1b\r' || key.sequence === '\x1b\n');
-      const isCtrlJ = key?.ctrl && key?.name === 'j';
-      if (isAltEnter || isCtrlJ) {
+      if (isAltEnter) {
         if (menuItems.length === 0 && !turnActive) {
           altEnterPressed = true;
           eraseMenu();
-          if (isCtrlJ) {
-            // Ctrl+J sends \n which readline interprets as Enter — submit current line
-            // so the ask() promise resolves and the main loop appends it to multilineLines.
-          }
           return;
         }
       }
