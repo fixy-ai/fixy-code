@@ -1,6 +1,8 @@
 export interface GeminiOutputResult {
   summary: string;
   sessionIndex: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 /**
@@ -9,7 +11,32 @@ export interface GeminiOutputResult {
  * sessionIndex is resolved separately by parseListSessions().
  */
 export function parseGeminiOutput(stdout: string): GeminiOutputResult {
-  return { summary: stdout.trim(), sessionIndex: null };
+  if (stdout.length === 0) {
+    return { summary: '', sessionIndex: null };
+  }
+
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+
+  // Best-effort: look for token usage patterns in the output
+  // Gemini CLI may print "Input tokens: N" or "Output tokens: N" in various formats
+  const inputMatch = stdout.match(/input[_ ]tokens?\s*[:=]\s*(\d+)/i);
+  if (inputMatch) inputTokens = parseInt(inputMatch[1] ?? '', 10) || undefined;
+  const outputMatch = stdout.match(/output[_ ]tokens?\s*[:=]\s*(\d+)/i);
+  if (outputMatch) outputTokens = parseInt(outputMatch[1] ?? '', 10) || undefined;
+
+  // Remove token usage lines from summary to avoid cluttering output
+  let summary = stdout
+    .replace(/input[_ ]tokens?\s*[:=]\s*\d+/gi, '')
+    .replace(/output[_ ]tokens?\s*[:=]\s*\d+/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (summary === '') {
+    summary = stdout.trim();
+  }
+
+  return { summary, sessionIndex: null, inputTokens, outputTokens };
 }
 
 /**

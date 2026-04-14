@@ -105,7 +105,9 @@ class CodexAdapter implements FixyAdapter {
       if (codex && codex.models.length > 0) {
         return codex.models.map((m) => ({ id: m.id, description: m.description }));
       }
-    } catch { /* fixy.ai unreachable — continue */ }
+    } catch {
+      /* fixy.ai unreachable — continue */
+    }
 
     // 2. Try OpenAI API directly
     const apiKey = process.env['OPENAI_API_KEY'];
@@ -138,7 +140,9 @@ class CodexAdapter implements FixyAdapter {
 
           if (fetched.length > 0) return fetched;
         }
-      } catch { /* API failed — continue */ }
+      } catch {
+        /* API failed — continue */
+      }
     }
 
     // 3. Read current model from Codex config
@@ -211,17 +215,9 @@ class CodexAdapter implements FixyAdapter {
     const forwardJsonLine = (line: string): void => {
       try {
         const obj = JSON.parse(line);
-        if (
-          typeof obj === 'object' &&
-          obj !== null &&
-          obj['type'] === 'item.completed'
-        ) {
+        if (typeof obj === 'object' && obj !== null && obj['type'] === 'item.completed') {
           const item = obj['item'];
-          if (
-            typeof item === 'object' &&
-            item !== null &&
-            item['type'] === 'agent_message'
-          ) {
+          if (typeof item === 'object' && item !== null && item['type'] === 'agent_message') {
             const rawText = item['text'];
             if (typeof rawText === 'string' && rawText.length > 0) {
               const text = rawText.replace(CODEX_STDIN_WARNING, '').trimStart();
@@ -293,6 +289,8 @@ class CodexAdapter implements FixyAdapter {
       patches: [],
       warnings,
       errorMessage,
+      inputTokens: parsed.inputTokens,
+      outputTokens: parsed.outputTokens,
     };
   }
 }

@@ -51,6 +51,10 @@ export interface FixyExecutionResult {
   /** Non-fatal warnings shown to the user after the turn completes. */
   warnings: string[];
   errorMessage: string | null;
+  /** Estimated input token count for this turn (best-effort, undefined if unavailable). */
+  inputTokens?: number;
+  /** Estimated output token count for this turn (best-effort, undefined if unavailable). */
+  outputTokens?: number;
 }
 
 export interface FixySession {

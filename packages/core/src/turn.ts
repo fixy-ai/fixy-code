@@ -4,13 +4,18 @@ import { randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, normalize } from 'node:path';
 
-import type { FixyExecutionContext } from './adapter.js';
+import type { FixyExecutionContext, FixyExecutionResult } from './adapter.js';
 import type { FixyMessage, FixyThread } from './thread.js';
 import type { AdapterRegistry } from './registry.js';
 import { Router } from './router.js';
 import type { LocalThreadStore } from './store.js';
 import { FixyCommandRunner } from './fixy-commands.js';
 import { WorktreeManager } from './worktree.js';
+
+export interface TurnResult {
+  inputTokens?: number;
+  outputTokens?: number;
+}
 
 export interface TurnParams {
   thread: FixyThread;
@@ -23,7 +28,7 @@ export interface TurnParams {
 }
 
 export class TurnController {
-  async runTurn(params: TurnParams): Promise<void> {
+  async runTurn(params: TurnParams): Promise<TurnResult> {
     const { thread, input, store } = params;
 
     const router = new Router(params.registry);
@@ -53,22 +58,38 @@ export class TurnController {
 
     await store.appendMessage(thread.id, thread.projectRoot, userMsg);
 
+    let totalInputTokens: number | undefined;
+    let totalOutputTokens: number | undefined;
+
+    const accumulate = (result: FixyExecutionResult): void => {
+      if (result.inputTokens !== undefined) {
+        totalInputTokens = (totalInputTokens ?? 0) + result.inputTokens;
+      }
+      if (result.outputTokens !== undefined) {
+        totalOutputTokens = (totalOutputTokens ?? 0) + result.outputTokens;
+      }
+    };
+
     switch (parsed.kind) {
       case 'mention': {
         if (parsed.agentIds.length > 3) {
           await this._appendSystemMessage('maximum 3 adapters per turn', params);
-          return;
+          return {};
         }
         let mentionBody = parsed.body;
         if (parsed.fileRefs.length > 0) {
-          const { prefix, errors } = await this._resolveFileRefs(parsed.fileRefs, thread.projectRoot);
+          const { prefix, errors } = await this._resolveFileRefs(
+            parsed.fileRefs,
+            thread.projectRoot,
+          );
           for (const err of errors) {
             params.onLog('stderr', err + '\n');
           }
           mentionBody = prefix + mentionBody;
         }
         for (const agentId of parsed.agentIds) {
-          await this._dispatchToAdapter(agentId, mentionBody, params);
+          const result = await this._dispatchToAdapter(agentId, mentionBody, params);
+          accumulate(result);
         }
         break;
       }
@@ -92,13 +113,17 @@ export class TurnController {
         const resolvedAgentId = lastAgent ?? thread.workerModel;
         let bareBody = parsed.body;
         if (parsed.fileRefs.length > 0) {
-          const { prefix, errors } = await this._resolveFileRefs(parsed.fileRefs, thread.projectRoot);
+          const { prefix, errors } = await this._resolveFileRefs(
+            parsed.fileRefs,
+            thread.projectRoot,
+          );
           for (const err of errors) {
             params.onLog('stderr', err + '\n');
           }
           bareBody = prefix + bareBody;
         }
-        await this._dispatchToAdapter(resolvedAgentId, bareBody, params);
+        const result = await this._dispatchToAdapter(resolvedAgentId, bareBody, params);
+        accumulate(result);
         break;
       }
 
@@ -107,6 +132,11 @@ export class TurnController {
         break;
       }
     }
+
+    return {
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+    };
   }
 
   private _buildMessageList(messages: FixyMessage[]): FixyMessage[] {
@@ -134,7 +164,7 @@ export class TurnController {
     agentId: string,
     body: string,
     params: TurnParams,
-  ): Promise<void> {
+  ): Promise<FixyExecutionResult> {
     const freshThread = await params.store.getThread(params.thread.id, params.thread.projectRoot);
 
     const adapter = params.registry.require(agentId);
@@ -176,6 +206,8 @@ export class TurnController {
     await params.store.appendMessage(params.thread.id, params.thread.projectRoot, agentMsg);
 
     params.thread.agentSessions[agentId] = result.session;
+
+    return result;
   }
 
   private async _resolveFileRefs(
@@ -189,7 +221,11 @@ export class TurnController {
 
     for (const ref of fileRefs) {
       const normalized = normalize(ref);
-      if (BLOCKED_SEGMENTS.some((seg) => normalized.split('/').includes(seg) || normalized.split('\\').includes(seg))) {
+      if (
+        BLOCKED_SEGMENTS.some(
+          (seg) => normalized.split('/').includes(seg) || normalized.split('\\').includes(seg),
+        )
+      ) {
         errors.push(`Blocked path: ${ref}`);
         continue;
       }

@@ -1,6 +1,8 @@
 export interface CodexStreamResult {
   sessionId: string | null;
   summary: string;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 function tryParseJson(line: string): Record<string, unknown> | null {
@@ -26,6 +28,8 @@ export function parseCodexStreamJson(stdout: string): CodexStreamResult {
 
   let sessionId: string | null = null;
   const agentTexts: string[] = [];
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
 
   const lines = stdout.split('\n');
 
@@ -52,14 +56,21 @@ export function parseCodexStreamJson(stdout: string): CodexStreamResult {
           if (text !== '') agentTexts.push(text);
         }
       }
+    } else if (type === 'thread.completed') {
+      const usage = obj['usage'];
+      if (typeof usage === 'object' && usage !== null && !Array.isArray(usage)) {
+        const u = usage as Record<string, unknown>;
+        if (typeof u['input_tokens'] === 'number') inputTokens = u['input_tokens'];
+        if (typeof u['output_tokens'] === 'number') outputTokens = u['output_tokens'];
+      }
     }
   }
 
   const summary = agentTexts.join('\n\n').trim();
 
   if (summary === '' && sessionId === null) {
-    return { sessionId: null, summary: stdout };
+    return { sessionId: null, summary: stdout, inputTokens, outputTokens };
   }
 
-  return { sessionId, summary };
+  return { sessionId, summary, inputTokens, outputTokens };
 }

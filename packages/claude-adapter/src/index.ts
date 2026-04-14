@@ -68,8 +68,7 @@ class ClaudeAdapter implements FixyAdapter {
   async getActiveModel(): Promise<string | null> {
     // 1. Try reading the model from ~/.claude/settings.json
     try {
-      const configDir =
-        process.env['CLAUDE_CONFIG_DIR'] ?? path.join(os.homedir(), '.claude');
+      const configDir = process.env['CLAUDE_CONFIG_DIR'] ?? path.join(os.homedir(), '.claude');
       const settingsPath = path.join(configDir, 'settings.json');
       const raw = await fs.readFile(settingsPath, 'utf8');
       const settings = JSON.parse(raw) as Record<string, unknown>;
@@ -109,7 +108,9 @@ class ClaudeAdapter implements FixyAdapter {
       if (claude && claude.models.length > 0) {
         return claude.models.map((m) => ({ id: m.id, description: m.description }));
       }
-    } catch { /* fixy.ai unreachable — continue */ }
+    } catch {
+      /* fixy.ai unreachable — continue */
+    }
 
     // 2. Try Anthropic API directly
     const apiKey = process.env['ANTHROPIC_API_KEY'];
@@ -131,14 +132,18 @@ class ClaudeAdapter implements FixyAdapter {
         }
 
         if (response.ok) {
-          const json = (await response.json()) as { data: Array<{ id: string; display_name: string }> };
+          const json = (await response.json()) as {
+            data: Array<{ id: string; display_name: string }>;
+          };
           const models = (json.data ?? [])
             .filter((m) => m.id.startsWith('claude-'))
             .sort((a, b) => (a.id < b.id ? 1 : -1))
             .map((m) => ({ id: m.id, description: m.display_name }));
           if (models.length > 0) return models;
         }
-      } catch { /* API failed — continue */ }
+      } catch {
+        /* API failed — continue */
+      }
     }
 
     // 3. Read current model from Claude config + known aliases
@@ -217,6 +222,8 @@ class ClaudeAdapter implements FixyAdapter {
       patches: [],
       warnings,
       errorMessage,
+      inputTokens: parsed.inputTokens,
+      outputTokens: parsed.outputTokens,
     };
   }
 }

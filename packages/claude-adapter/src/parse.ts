@@ -1,6 +1,8 @@
 export interface ClaudeStreamResult {
   sessionId: string | null;
   summary: string;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 function tryParseJson(line: string): Record<string, unknown> | null {
@@ -27,6 +29,8 @@ export function parseClaudeStreamJson(stdout: string): ClaudeStreamResult {
   let sessionId: string | null = null;
   const assistantTexts: string[] = [];
   let finalResult: Record<string, unknown> | null = null;
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
 
   const lines = stdout.split('\n');
 
@@ -70,6 +74,12 @@ export function parseClaudeStreamJson(stdout: string): ClaudeStreamResult {
       finalResult = obj;
       const sid = asString(obj['session_id'], '');
       if (sid !== '') sessionId = sid;
+      const usage = obj['usage'];
+      if (typeof usage === 'object' && usage !== null && !Array.isArray(usage)) {
+        const u = usage as Record<string, unknown>;
+        if (typeof u['input_tokens'] === 'number') inputTokens = u['input_tokens'];
+        if (typeof u['output_tokens'] === 'number') outputTokens = u['output_tokens'];
+      }
     }
   }
 
@@ -85,8 +95,8 @@ export function parseClaudeStreamJson(stdout: string): ClaudeStreamResult {
   }
 
   if (summary === '' && sessionId === null) {
-    return { sessionId: null, summary: stdout };
+    return { sessionId: null, summary: stdout, inputTokens, outputTokens };
   }
 
-  return { sessionId, summary };
+  return { sessionId, summary, inputTokens, outputTokens };
 }

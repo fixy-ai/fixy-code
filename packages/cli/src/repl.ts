@@ -4,6 +4,7 @@ import type {
   LocalThreadStore,
   AdapterRegistry,
   TurnController,
+  TurnResult,
   WorktreeManager,
 } from '@fixy/core';
 import { loadSettings, loadAuth, heartbeat } from '@fixy/core';
@@ -121,6 +122,7 @@ const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/copy', desc: 'Copy last response to clipboard' },
   { name: '/clear', desc: 'Clear the terminal screen (/cls)' },
   { name: '/shortcuts', desc: 'Show keyboard shortcuts & multi-line input' },
+  { name: '/stats', desc: 'Show session token usage & statistics' },
   { name: '/compact', desc: 'Reset adapter session' },
   { name: '/reset', desc: 'Abort current turn and reset all sessions' },
   { name: '/quit', desc: 'Exit Fixy' },
@@ -137,6 +139,13 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let multilineLines: string[] = [];
   let altEnterPressed = false;
   const CONTINUATION_PROMPT = '\x1b[2m…\x1b[0m  ';
+
+  const sessionStats = {
+    turns: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    startTime: Date.now(),
+  };
 
   const settings = await loadSettings();
   const disabledAdapters = new Set(settings.disabledAdapters ?? []);
@@ -571,7 +580,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       }
       let headerPrinted = false;
 
-      await turnController.runTurn({
+      const turnResult = await turnController.runTurn({
         thread,
         input,
         registry,
@@ -709,6 +718,23 @@ export async function startRepl(params: ReplParams): Promise<void> {
           process.stderr.write(`warning: ${w}\n`);
         }
       }
+
+      // Track session stats
+      sessionStats.turns++;
+      if (turnResult.inputTokens !== undefined)
+        sessionStats.totalInputTokens += turnResult.inputTokens;
+      if (turnResult.outputTokens !== undefined)
+        sessionStats.totalOutputTokens += turnResult.outputTokens;
+
+      // Show per-turn token count
+      if (turnResult.inputTokens !== undefined || turnResult.outputTokens !== undefined) {
+        const parts: string[] = [];
+        if (turnResult.inputTokens !== undefined)
+          parts.push(`~${turnResult.inputTokens.toLocaleString()} input`);
+        if (turnResult.outputTokens !== undefined)
+          parts.push(`~${turnResult.outputTokens.toLocaleString()} output`);
+        process.stdout.write(`\x1b[2m↳ ${parts.join(' / ')} tokens\x1b[0m\n`);
+      }
     } catch (err) {
       if (turnAbort?.signal.aborted) {
         // cancelled by Ctrl-C, already handled
@@ -803,6 +829,40 @@ export async function startRepl(params: ReplParams): Promise<void> {
     if (normalized === '/quit' || normalized === '/exit') {
       process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       break;
+    }
+
+    if (normalized === '/stats') {
+      const elapsed = Math.floor((Date.now() - sessionStats.startTime) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      const hasTokenData = sessionStats.totalInputTokens > 0 || sessionStats.totalOutputTokens > 0;
+      const workerDisplay = thread.workerModel
+        ? `@${thread.workerModel}${models[thread.workerModel] ? ` (${models[thread.workerModel]})` : ''}`
+        : '(none)';
+      const I = '\x1b[38;5;105m';
+      const D = '\x1b[2m';
+      const R = '\x1b[0m';
+      const B = '\x1b[1m';
+      const lines = [
+        '',
+        `${B}Session Statistics${R}`,
+        `  ${I}Turns:${R}           ${sessionStats.turns}`,
+      ];
+      if (hasTokenData) {
+        lines.push(
+          `  ${I}Input tokens:${R}    ~${sessionStats.totalInputTokens.toLocaleString()}`,
+          `  ${I}Output tokens:${R}   ~${sessionStats.totalOutputTokens.toLocaleString()}`,
+        );
+      } else {
+        lines.push(`  ${D}Token tracking not available for current worker${R}`);
+      }
+      lines.push(
+        `  ${I}Duration:${R}        ${mins}m ${secs}s`,
+        `  ${I}Current worker:${R}  ${workerDisplay}`,
+        '',
+      );
+      process.stdout.write(lines.join('\n') + '\n');
+      continue;
     }
 
     await runTurn(input);

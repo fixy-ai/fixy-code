@@ -31,7 +31,7 @@ export { Router } from './router.js';
 export type { ParsedInput } from './router.js';
 
 export { TurnController } from './turn.js';
-export type { TurnParams } from './turn.js';
+export type { TurnParams, TurnResult } from './turn.js';
 
 export { WorktreeManager } from './worktree.js';
 export type { WorktreeHandle } from './worktree.js';
@@ -51,7 +51,24 @@ export { defaultSettings, loadSettings, saveSettings } from './settings.js';
 export { settingsPath, authPath } from './paths.js';
 
 export type { FixyAuth, DeviceCodeResponse, PollResult } from './auth.js';
-export { loadAuth, saveAuth, clearAuth, isAuthExpired, requestDeviceCode, pollDeviceAuth, runDeviceAuthFlow } from './auth.js';
+export {
+  loadAuth,
+  saveAuth,
+  clearAuth,
+  isAuthExpired,
+  requestDeviceCode,
+  pollDeviceAuth,
+  runDeviceAuthFlow,
+} from './auth.js';
 
-export { fetchProfile, registerSession, heartbeat, deleteSession, listSessions, fetchPlans, fetchUsage, fetchProviderModels } from './api.js';
+export {
+  fetchProfile,
+  registerSession,
+  heartbeat,
+  deleteSession,
+  listSessions,
+  fetchPlans,
+  fetchUsage,
+  fetchProviderModels,
+} from './api.js';
 export type { CodeProfile, CodeSession, CodePlan, ProviderModels } from './api.js';

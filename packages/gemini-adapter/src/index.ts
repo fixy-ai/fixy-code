@@ -114,7 +114,9 @@ class GeminiAdapter implements FixyAdapter {
       if (gemini && gemini.models.length > 0) {
         return gemini.models.map((m) => ({ id: m.id, description: m.description }));
       }
-    } catch { /* fixy.ai unreachable — continue */ }
+    } catch {
+      /* fixy.ai unreachable — continue */
+    }
 
     // 2. Try Google API — using API key from env or OAuth token from Gemini CLI
     const apiKey = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'];
@@ -125,7 +127,9 @@ class GeminiAdapter implements FixyAdapter {
         const raw = await fs.readFile(credsPath, 'utf8');
         const creds = JSON.parse(raw) as { access_token?: string };
         oauthToken = creds.access_token ?? null;
-      } catch { /* no oauth creds */ }
+      } catch {
+        /* no oauth creds */
+      }
     }
 
     if (apiKey || oauthToken) {
@@ -158,7 +162,9 @@ class GeminiAdapter implements FixyAdapter {
             }));
           if (apiModels.length > 0) return apiModels;
         }
-      } catch { /* API failed — continue */ }
+      } catch {
+        /* API failed — continue */
+      }
     }
 
     // 3. Read current model from Gemini CLI
@@ -261,6 +267,8 @@ class GeminiAdapter implements FixyAdapter {
       patches: [],
       warnings,
       errorMessage,
+      inputTokens: parsed.inputTokens,
+      outputTokens: parsed.outputTokens,
     };
   }
 }
