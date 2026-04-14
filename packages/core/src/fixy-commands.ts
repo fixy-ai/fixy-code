@@ -763,8 +763,12 @@ export class FixyCommandRunner {
       lines.push('  [a] low   [b] medium   [c] high   [d] xhigh');
     }
 
-    lines.push('');
-    lines.push('Type a model name (e.g. gemini-3-pro, claude-sonnet-4-6, gpt-5.4)');
+    if (models.length === 0) {
+      lines.push(`No model list available for @${adapterId}.`);
+      lines.push(`Run "${adapterId} /model" in a separate terminal to see available models.`);
+      lines.push('');
+    }
+    lines.push('Type a model name to set it');
 
     await this._appendSystemMessage(lines.join('\n'), ctx);
   }
