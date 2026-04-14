@@ -1,6 +1,6 @@
 {
   "name": "@fixy/adapter-utils",
-  "version": "0.0.61",
+  "version": "0.0.62",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
