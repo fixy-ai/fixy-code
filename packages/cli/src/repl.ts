@@ -114,9 +114,13 @@ const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/logout',   desc: 'Sign out from fixy.ai' },
   { name: '/settings', desc: 'View or update global settings' },
   { name: '/red-room', desc: 'Toggle adversarial mode on/off' },
-  { name: '/compact',  desc: 'Reset adapter session' },
-  { name: '/reset',    desc: 'Abort current turn and reset all sessions' },
-  { name: '/quit',     desc: 'Exit Fixy' },
+  { name: '/diff',      desc: 'Show git diff & untracked files (/d)' },
+  { name: '/copy',      desc: 'Copy last response to clipboard' },
+  { name: '/clear',     desc: 'Clear the terminal screen (/cls)' },
+  { name: '/shortcuts', desc: 'Show keyboard shortcuts & commands' },
+  { name: '/compact',   desc: 'Reset adapter session' },
+  { name: '/reset',     desc: 'Abort current turn and reset all sessions' },
+  { name: '/quit',      desc: 'Exit Fixy' },
 ];
 
 export async function startRepl(params: ReplParams): Promise<void> {
@@ -126,6 +130,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let turnActive = false;
   let turnAbort: AbortController | null = null;
   let spinner: ReturnType<typeof createSpinner> | null = null;
+  let lastResponse = '';
 
   const settings = await loadSettings();
   const disabledAdapters = new Set(settings.disabledAdapters ?? []);
@@ -536,6 +541,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
       });
 
       thread = await store.getThread(thread.id, thread.projectRoot);
+
+      // Track last agent response for /copy
+      const lastAgentMsg = [...thread.messages].reverse().find((m) => m.role === 'agent');
+      if (lastAgentMsg) lastResponse = lastAgentMsg.content;
 
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {

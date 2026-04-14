@@ -93,6 +93,20 @@ export class FixyCommandRunner {
       case '/upgrade':
         await this._handleUpgrade(ctx);
         break;
+      case '/diff':
+      case '/d':
+        await this._handleDiff(ctx);
+        break;
+      case '/copy':
+        await this._handleCopy(ctx);
+        break;
+      case '/clear':
+      case '/cls':
+        await this._handleClear(ctx);
+        break;
+      case '/shortcuts':
+        await this._handleShortcuts(ctx);
+        break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
     }
@@ -1006,6 +1020,10 @@ export class FixyCommandRunner {
       '    /logout                Sign out',
       '    /settings              View/update settings',
       '    /red-room              Toggle adversarial mode',
+      '    /diff (/d)             Show git diff & untracked files',
+      '    /copy                  Copy last response to clipboard',
+      '    /clear (/cls)          Clear the terminal screen',
+      '    /shortcuts             Show keyboard shortcuts & commands',
       '    /compact               Reset adapter session',
       '    /reset                 Reset all sessions',
       '    /quit                  Exit fixy',
@@ -1191,6 +1209,108 @@ export class FixyCommandRunner {
     };
 
     await ctx.store.appendMessage(thread.id, thread.projectRoot, agentMsg);
+  }
+
+  private async _handleDiff(ctx: FixyCommandContext): Promise<void> {
+    const { execFileSync } = await import('node:child_process');
+    try {
+      const diff = execFileSync('git', ['diff'], {
+        cwd: ctx.thread.projectRoot,
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const statusOut = execFileSync('git', ['status', '--porcelain'], {
+        cwd: ctx.thread.projectRoot,
+        encoding: 'utf8',
+      });
+      const untracked = statusOut
+        .split('\n')
+        .filter((l) => l.startsWith('??')).length;
+
+      const parts: string[] = [];
+      if (diff.trim()) {
+        parts.push(diff.trimEnd());
+      } else {
+        parts.push('No changes detected');
+      }
+      if (untracked > 0) {
+        parts.push(`\n${untracked} untracked file${untracked > 1 ? 's' : ''}`);
+      }
+      await this._appendSystemMessage(parts.join('\n'), ctx);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this._appendSystemMessage(`git diff failed: ${msg}`, ctx);
+    }
+  }
+
+  private async _handleCopy(ctx: FixyCommandContext): Promise<void> {
+    const agentMessages = ctx.thread.messages.filter((m) => m.role === 'agent');
+    const last = agentMessages[agentMessages.length - 1];
+    if (!last) {
+      await this._appendSystemMessage('No response to copy', ctx);
+      return;
+    }
+
+    const { execFileSync } = await import('node:child_process');
+    const platform = process.platform;
+    try {
+      if (platform === 'darwin') {
+        execFileSync('pbcopy', [], { input: last.content, encoding: 'utf8' });
+      } else if (platform === 'win32') {
+        execFileSync('clip', [], { input: last.content, encoding: 'utf8' });
+      } else {
+        execFileSync('xclip', ['-selection', 'clipboard'], { input: last.content, encoding: 'utf8' });
+      }
+      await this._appendSystemMessage('Copied to clipboard', ctx);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this._appendSystemMessage(`Failed to copy: ${msg}`, ctx);
+    }
+  }
+
+  private async _handleClear(ctx: FixyCommandContext): Promise<void> {
+    ctx.onLog('stdout', '\x1b[2J\x1b[H');
+  }
+
+  private async _handleShortcuts(ctx: FixyCommandContext): Promise<void> {
+    const I = '\x1b[38;5;105m'; // indigo
+    const D = '\x1b[2m';        // dim
+    const R = '\x1b[0m';        // reset
+    const B = '\x1b[1m';        // bold
+
+    const lines = [
+      '',
+      `${B}Keyboard Shortcuts${R}`,
+      `  ${I}Enter${R}         ${D}Submit message${R}`,
+      `  ${I}Esc${R}           ${D}Cancel current turn${R}`,
+      `  ${I}Up / Down${R}     ${D}Navigate autocomplete menu${R}`,
+      `  ${I}Tab${R}           ${D}Accept autocomplete selection${R}`,
+      `  ${I}Ctrl+C${R}        ${D}Cancel turn or exit${R}`,
+      '',
+      `${B}Commands${R}`,
+      `  ${I}/all${R}     ${I}(/a)${R}    ${D}Run collaboration engine on all agents${R}`,
+      `  ${I}/worker${R}  ${I}(/w)${R}    ${D}Set the worker adapter${R}`,
+      `  ${I}/model${R}   ${I}(/m)${R}    ${D}View or change adapter models${R}`,
+      `  ${I}/new${R}     ${I}(/n)${R}    ${D}Create a new session${R}`,
+      `  ${I}/threads${R} ${I}(/t)${R}    ${D}List & switch sessions${R}`,
+      `  ${I}/status${R}  ${I}(/st)${R}   ${D}Show adapter status${R}`,
+      `  ${I}/diff${R}    ${I}(/d)${R}    ${D}Show git diff & untracked files${R}`,
+      `  ${I}/copy${R}              ${D}Copy last response to clipboard${R}`,
+      `  ${I}/clear${R}   ${I}(/cls)${R}  ${D}Clear the terminal screen${R}`,
+      `  ${I}/shortcuts${R}          ${D}Show this shortcuts list${R}`,
+      `  ${I}/help${R}    ${I}(/h)${R}    ${D}Show all commands & usage${R}`,
+      `  ${I}/compact${R}            ${D}Reset adapter session${R}`,
+      `  ${I}/settings${R}           ${D}View or update global settings${R}`,
+      `  ${I}/red-room${R}           ${D}Toggle adversarial mode on/off${R}`,
+      `  ${I}/account${R}            ${D}View account, plan & usage${R}`,
+      `  ${I}/upgrade${R}            ${D}Open plan management in browser${R}`,
+      `  ${I}/login${R}              ${D}Sign in to fixy.ai${R}`,
+      `  ${I}/logout${R}             ${D}Sign out from fixy.ai${R}`,
+      `  ${I}/reset${R}              ${D}Abort turn and reset all sessions${R}`,
+      `  ${I}/quit${R}               ${D}Exit Fixy${R}`,
+      '',
+    ];
+    await this._appendSystemMessage(lines.join('\n'), ctx);
   }
 
   private async _persistThread(thread: FixyThread): Promise<void> {
