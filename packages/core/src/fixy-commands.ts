@@ -188,7 +188,8 @@ export class FixyCommandRunner {
     };
 
     // Simple task detection: short prompts without coding/task keywords → broadcast to all agents
-    const TASK_KEYWORDS = /\b(implement|refactor|build|fix|create|add|remove|delete|update|migrate|deploy|test|review|debug|optimize|change|move|rename|install|configure|setup|write|design|plan|task|feature|bug|issue|todo)\b/i;
+    const TASK_KEYWORDS =
+      /\b(implement|refactor|build|fix|create|add|remove|delete|update|migrate|deploy|test|review|debug|optimize|change|move|rename|install|configure|setup|write|design|plan|task|feature|bug|issue|todo)\b/i;
     const isComplexTask = prompt.length > 60 || TASK_KEYWORDS.test(prompt);
 
     if (!isComplexTask) {
@@ -392,7 +393,6 @@ export class FixyCommandRunner {
             workerOutput = await callAdapter(workerAdapter, fixPrompt);
           }
         }
-
       }
     }
 
@@ -437,11 +437,12 @@ export class FixyCommandRunner {
   private async _handleSettings(args: string, ctx: FixyCommandContext): Promise<void> {
     const trimmed = args.trim();
 
-    if (trimmed === '' ) {
+    if (trimmed === '') {
       // /settings — print all key/value pairs
       const settings = await loadSettings();
-      const lines = (Object.entries(settings) as Array<[keyof FixySettings, FixySettings[keyof FixySettings]]>)
-        .map(([k, v]) => `${k}: ${String(v)}`);
+      const lines = (
+        Object.entries(settings) as Array<[keyof FixySettings, FixySettings[keyof FixySettings]]>
+      ).map(([k, v]) => `${k}: ${String(v)}`);
       await this._appendSystemMessage(lines.join('\n'), ctx);
       return;
     }
@@ -458,10 +459,7 @@ export class FixyCommandRunner {
       const rest = trimmed.slice(4).trim();
       const spaceIdx = rest.indexOf(' ');
       if (spaceIdx === -1) {
-        await this._appendSystemMessage(
-          'usage: /settings set <key> <value>',
-          ctx,
-        );
+        await this._appendSystemMessage('usage: /settings set <key> <value>', ctx);
         return;
       }
       const key = rest.slice(0, spaceIdx) as keyof FixySettings;
@@ -483,20 +481,14 @@ export class FixyCommandRunner {
 
       if (typeof defaultVal === 'boolean') {
         if (rawValue !== 'true' && rawValue !== 'false') {
-          await this._appendSystemMessage(
-            `"${key}" expects true or false`,
-            ctx,
-          );
+          await this._appendSystemMessage(`"${key}" expects true or false`, ctx);
           return;
         }
-        parsed = rawValue === 'true' as FixySettings[typeof key];
+        parsed = rawValue === ('true' as FixySettings[typeof key]);
       } else if (typeof defaultVal === 'number') {
         const n = Number(rawValue);
         if (!Number.isFinite(n)) {
-          await this._appendSystemMessage(
-            `"${key}" expects a number`,
-            ctx,
-          );
+          await this._appendSystemMessage(`"${key}" expects a number`, ctx);
           return;
         }
         parsed = n as FixySettings[typeof key];
@@ -717,7 +709,10 @@ export class FixyCommandRunner {
     const settings = await loadSettings();
     const adapters = ctx.registry.list();
     const disabled = settings.disabledAdapters ?? [];
-    const lines: string[] = ['ADAPTER_TOGGLE_SELECT', 'Providers (type number to toggle on/off, Enter to dismiss):'];
+    const lines: string[] = [
+      'ADAPTER_TOGGLE_SELECT',
+      'Providers (type number to toggle on/off, Enter to dismiss):',
+    ];
 
     for (let i = 0; i < adapters.length; i++) {
       const adapter = adapters[i];
@@ -729,7 +724,10 @@ export class FixyCommandRunner {
       } else if (adapter.id === 'codex') {
         const model = settings.codexModel;
         const effort = settings.codexEffort;
-        currentModel = [model, effort].filter(Boolean).join(' ') || (await adapter.getActiveModel?.()) || 'default';
+        currentModel =
+          [model, effort].filter(Boolean).join(' ') ||
+          (await adapter.getActiveModel?.()) ||
+          'default';
       } else if (adapter.id === 'gemini') {
         currentModel = settings.geminiModel || (await adapter.getActiveModel?.()) || 'default';
       } else {
@@ -773,9 +771,7 @@ export class FixyCommandRunner {
       const lines: string[] = ['Agents:'];
       for (const adapter of adapters) {
         const isDisabled = disabled.has(adapter.id);
-        const status = isDisabled
-          ? '\x1b[2mdisabled\x1b[0m'
-          : '\x1b[38;5;114menabled\x1b[0m';
+        const status = isDisabled ? '\x1b[2mdisabled\x1b[0m' : '\x1b[38;5;114menabled\x1b[0m';
         lines.push(`  @${adapter.id.padEnd(10)} ${status}`);
       }
       lines.push('');
@@ -803,7 +799,10 @@ export class FixyCommandRunner {
         // Cannot disable all agents
         const enabledCount = adapters.filter((a) => !disabled.has(a.id)).length;
         if (enabledCount <= 1 && !disabled.has(agentName)) {
-          await this._appendSystemMessage('Cannot disable all agents — at least one must remain enabled', ctx);
+          await this._appendSystemMessage(
+            'Cannot disable all agents — at least one must remain enabled',
+            ctx,
+          );
           return;
         }
         disabled.add(agentName);
@@ -813,13 +812,13 @@ export class FixyCommandRunner {
       return;
     }
 
-    await this._appendSystemMessage('Usage: /agents | /agents enable <name> | /agents disable <name>', ctx);
+    await this._appendSystemMessage(
+      'Usage: /agents | /agents enable <name> | /agents disable <name>',
+      ctx,
+    );
   }
 
-  private async _showModelSelectionUI(
-    adapterId: string,
-    ctx: FixyCommandContext,
-  ): Promise<void> {
+  private async _showModelSelectionUI(adapterId: string, ctx: FixyCommandContext): Promise<void> {
     const adapter = ctx.registry.require(adapterId);
 
     if (!adapter.listModels) {
@@ -898,10 +897,7 @@ export class FixyCommandRunner {
     }
 
     if (selectedModel === null && selectedEffort === null) {
-      await this._appendSystemMessage(
-        'invalid selection — no model or effort chosen',
-        ctx,
-      );
+      await this._appendSystemMessage('invalid selection — no model or effort chosen', ctx);
       return;
     }
 
@@ -929,8 +925,7 @@ export class FixyCommandRunner {
         .replace(/--reasoning-effort\s+\S+/g, '')
         .trim();
 
-      if (selectedModel)
-        newArgs = `--model ${selectedModel}${newArgs ? ' ' + newArgs : ''}`;
+      if (selectedModel) newArgs = `--model ${selectedModel}${newArgs ? ' ' + newArgs : ''}`;
       if (selectedEffort)
         newArgs = `${newArgs ? newArgs + ' ' : ''}--reasoning-effort ${selectedEffort}`;
 
@@ -979,20 +974,14 @@ export class FixyCommandRunner {
     ctx.onLog('stdout', '\x1b[38;5;105mStarting sign-in…\x1b[0m\n');
 
     try {
-      const auth = await runDeviceAuthFlow(
-        (msg) => ctx.onLog('stdout', msg),
-        ctx.signal,
-      );
+      const auth = await runDeviceAuthFlow((msg) => ctx.onLog('stdout', msg), ctx.signal);
       if (auth) {
         await this._appendSystemMessage(
           `Signed in as ${auth.email} (${auth.plan} plan). Welcome!`,
           ctx,
         );
       } else {
-        await this._appendSystemMessage(
-          'Sign-in cancelled or expired. Try /login again.',
-          ctx,
-        );
+        await this._appendSystemMessage('Sign-in cancelled or expired. Try /login again.', ctx);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1033,10 +1022,7 @@ export class FixyCommandRunner {
   private async _handleFork(ctx: FixyCommandContext): Promise<void> {
     const forked = await ctx.store.forkThread(ctx.thread.id, ctx.thread.projectRoot);
 
-    await this._appendSystemMessage(
-      `THREAD_SWITCH\nForked to new thread: ${forked.id}`,
-      ctx,
-    );
+    await this._appendSystemMessage(`THREAD_SWITCH\nForked to new thread: ${forked.id}`, ctx);
   }
 
   private async _handleNew(ctx: FixyCommandContext): Promise<void> {
@@ -1067,11 +1053,7 @@ export class FixyCommandRunner {
       const newThread = await ctx.store.createThread(ctx.thread.projectRoot);
       newThread.workerModel = ctx.thread.workerModel;
 
-      await registerSession(
-        newThread.id,
-        ctx.thread.projectRoot,
-        ctx.thread.workerModel ?? null,
-      );
+      await registerSession(newThread.id, ctx.thread.projectRoot, ctx.thread.workerModel ?? null);
 
       await this._appendSystemMessage(
         `NEW_THREAD\nNew session created: ${newThread.id}\nSwitch to it with: fixy --thread ${newThread.id}`,
@@ -1126,12 +1108,14 @@ export class FixyCommandRunner {
       '    /diff (/d)             Show git diff & untracked files',
       '    /copy                  Copy last response to clipboard',
       '    /clear (/cls)          Clear the terminal screen',
-      '    /shortcuts             Show keyboard shortcuts & commands',
+      '    /shortcuts             Show keyboard shortcuts & multi-line input',
       '    /compact               Reset adapter session',
       '    /reset                 Reset all sessions',
       '    /quit                  Exit fixy',
       '',
       '  Tips:',
+      '    Alt+Enter             New line (multi-line input)',
+      '    \\ at end of line      Continue on next line',
       '    Tab                    Autocomplete commands & agents',
       '    ESC                    Cancel current turn',
       '    Ctrl-C                 Cancel turn or quit',
@@ -1142,10 +1126,7 @@ export class FixyCommandRunner {
   private async _handleAccount(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
     if (!auth) {
-      await this._appendSystemMessage(
-        'Not signed in. Run /login to connect your account.',
-        ctx,
-      );
+      await this._appendSystemMessage('Not signed in. Run /login to connect your account.', ctx);
       return;
     }
 
@@ -1178,10 +1159,7 @@ export class FixyCommandRunner {
   private async _handleUpgrade(ctx: FixyCommandContext): Promise<void> {
     const auth = await loadAuth();
     if (!auth) {
-      await this._appendSystemMessage(
-        'Not signed in. Run /login first, then /upgrade.',
-        ctx,
-      );
+      await this._appendSystemMessage('Not signed in. Run /login first, then /upgrade.', ctx);
       return;
     }
 
@@ -1226,14 +1204,20 @@ export class FixyCommandRunner {
       const date = new Date(t.updatedAt).toLocaleDateString();
       const msgs = t.messages.length;
       const nameLabel = t.name ? `${t.name} ` : '';
-      lines.push(`  [${i + 1}] ${nameLabel}${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`);
+      lines.push(
+        `  [${i + 1}] ${nameLabel}${t.id.slice(0, 8)}… ${t.id} — ${msgs} messages — ${date}${current}`,
+      );
     }
     lines.push('', 'Choose a number to switch, or Enter to dismiss');
     await this._appendSystemMessage(lines.join('\n'), ctx);
   }
 
   private async _callAdapterForAll(
-    adapter: { id: string; name: string; execute: (ctx: FixyExecutionContext) => Promise<FixyExecutionResult> },
+    adapter: {
+      id: string;
+      name: string;
+      execute: (ctx: FixyExecutionContext) => Promise<FixyExecutionResult>;
+    },
     prompt: string,
     ctx: FixyCommandContext,
   ): Promise<void> {
@@ -1327,9 +1311,7 @@ export class FixyCommandRunner {
         cwd: ctx.thread.projectRoot,
         encoding: 'utf8',
       });
-      const untracked = statusOut
-        .split('\n')
-        .filter((l) => l.startsWith('??')).length;
+      const untracked = statusOut.split('\n').filter((l) => l.startsWith('??')).length;
 
       const parts: string[] = [];
       if (diff.trim()) {
@@ -1363,7 +1345,10 @@ export class FixyCommandRunner {
       } else if (platform === 'win32') {
         execFileSync('clip', [], { input: last.content, encoding: 'utf8' });
       } else {
-        execFileSync('xclip', ['-selection', 'clipboard'], { input: last.content, encoding: 'utf8' });
+        execFileSync('xclip', ['-selection', 'clipboard'], {
+          input: last.content,
+          encoding: 'utf8',
+        });
       }
       await this._appendSystemMessage('Copied to clipboard', ctx);
     } catch (err) {
@@ -1378,14 +1363,16 @@ export class FixyCommandRunner {
 
   private async _handleShortcuts(ctx: FixyCommandContext): Promise<void> {
     const I = '\x1b[38;5;105m'; // indigo
-    const D = '\x1b[2m';        // dim
-    const R = '\x1b[0m';        // reset
-    const B = '\x1b[1m';        // bold
+    const D = '\x1b[2m'; // dim
+    const R = '\x1b[0m'; // reset
+    const B = '\x1b[1m'; // bold
 
     const lines = [
       '',
       `${B}Keyboard Shortcuts${R}`,
       `  ${I}Enter${R}         ${D}Submit message${R}`,
+      `  ${I}Alt+Enter${R}     ${D}New line (multi-line input)${R}`,
+      `  ${I}\\${R} at end       ${D}Continue on next line${R}`,
       `  ${I}Esc${R}           ${D}Cancel current turn${R}`,
       `  ${I}Up / Down${R}     ${D}Navigate autocomplete menu${R}`,
       `  ${I}Tab${R}           ${D}Accept autocomplete selection${R}`,

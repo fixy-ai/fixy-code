@@ -73,7 +73,7 @@ export function startupPanel(
   const top = `${FIXY_COLOR}╭${'─'.repeat(innerWidth)}╮${RESET}`;
   const bottom = `${FIXY_COLOR}╰${'─'.repeat(innerWidth)}╯${RESET}`;
 
-  const hints = `${DIM}  @ mention agents · / commands · Tab complete · ESC cancel · Ctrl-C quit${RESET}`;
+  const hints = `${DIM}  @ mention agents · / commands · Alt+Enter new line · \\ continue · Tab complete · ESC cancel · Ctrl-C quit${RESET}`;
 
   return [top, ...contentLines.map(padLine), bottom, hints].join('\n');
 }

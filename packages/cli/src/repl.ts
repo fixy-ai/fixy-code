@@ -11,25 +11,25 @@ import { PROMPT, createSpinner } from './format.js';
 
 // ── ANSI color constants for output styling ──
 const OUT_RESET = '\x1b[0m';
-const OUT_TEXT = '\x1b[38;5;252m';   // light gray — agent speech
-const OUT_CODE = '\x1b[97m';         // bright white — code
+const OUT_TEXT = '\x1b[38;5;252m'; // light gray — agent speech
+const OUT_CODE = '\x1b[97m'; // bright white — code
 const OUT_CODE_FENCE = '\x1b[2;36m'; // dim cyan — ``` markers
-const OUT_HEADING = '\x1b[1;97m';    // bold bright white — headings
-const OUT_STDERR = '\x1b[2;31m';     // dim red — stderr
+const OUT_HEADING = '\x1b[1;97m'; // bold bright white — headings
+const OUT_STDERR = '\x1b[2;31m'; // dim red — stderr
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b\[/;           // detect pre-colored lines
+const ANSI_RE = /\x1b\[/; // detect pre-colored lines
 
 /** Strip markdown formatting from terminal output. */
 function stripMarkdown(text: string): string {
   return text
-    .replace(/^(\s*)\*\s+/gm, '$1• ')            // * bullet → • (must be before bold/italic)
-    .replace(/^(\s*)-\s+/gm, '$1• ')             // - bullet → •
-    .replace(/^(\s*)\d+\.\s+/gm, '$1')           // 1. numbered list → strip number
-    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1')        // ***bold italic***
-    .replace(/\*\*(.+?)\*\*/gs, '$1')            // **bold**
-    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '$1')  // *italic*
-    .replace(/^#{1,6}\s+/gm, '')                 // ## headings
-    .replace(/`([^`\n]+)`/g, '$1');               // `inline code`
+    .replace(/^(\s*)\*\s+/gm, '$1• ') // * bullet → • (must be before bold/italic)
+    .replace(/^(\s*)-\s+/gm, '$1• ') // - bullet → •
+    .replace(/^(\s*)\d+\.\s+/gm, '$1') // 1. numbered list → strip number
+    .replace(/\*\*\*(.+?)\*\*\*/gs, '$1') // ***bold italic***
+    .replace(/\*\*(.+?)\*\*/gs, '$1') // **bold**
+    .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '$1') // *italic*
+    .replace(/^#{1,6}\s+/gm, '') // ## headings
+    .replace(/`([^`\n]+)`/g, '$1'); // `inline code`
 }
 
 /**
@@ -101,29 +101,29 @@ const MENU_HIGHLIGHT_BG = '\x1b[48;5;236m'; // dark gray bg for selected item
 const MENU_RESET = '\x1b[0m';
 
 const SLASH_MENU: Array<{ name: string; desc: string }> = [
-  { name: '/agents',   desc: 'Enable/disable agents (/ag)' },
-  { name: '/all',      desc: 'Run collaboration engine on all agents (/a)' },
-  { name: '/worker',   desc: 'Set the worker adapter (/w)' },
-  { name: '/model',    desc: 'View or change adapter models (/m)' },
-  { name: '/new',      desc: 'Create a new session (/n)' },
-  { name: '/threads',  desc: 'List & switch sessions (/t)' },
-  { name: '/rename',   desc: 'Rename current session (/rn)' },
-  { name: '/fork',     desc: 'Fork current session (/fk)' },
-  { name: '/help',     desc: 'Show all commands & usage (/h)' },
-  { name: '/status',   desc: 'Show adapter status (/st)' },
-  { name: '/account',  desc: 'View account, plan & usage' },
-  { name: '/upgrade',  desc: 'Open plan management in browser' },
-  { name: '/login',    desc: 'Sign in to fixy.ai' },
-  { name: '/logout',   desc: 'Sign out from fixy.ai' },
+  { name: '/agents', desc: 'Enable/disable agents (/ag)' },
+  { name: '/all', desc: 'Run collaboration engine on all agents (/a)' },
+  { name: '/worker', desc: 'Set the worker adapter (/w)' },
+  { name: '/model', desc: 'View or change adapter models (/m)' },
+  { name: '/new', desc: 'Create a new session (/n)' },
+  { name: '/threads', desc: 'List & switch sessions (/t)' },
+  { name: '/rename', desc: 'Rename current session (/rn)' },
+  { name: '/fork', desc: 'Fork current session (/fk)' },
+  { name: '/help', desc: 'Show all commands & usage (/h)' },
+  { name: '/status', desc: 'Show adapter status (/st)' },
+  { name: '/account', desc: 'View account, plan & usage' },
+  { name: '/upgrade', desc: 'Open plan management in browser' },
+  { name: '/login', desc: 'Sign in to fixy.ai' },
+  { name: '/logout', desc: 'Sign out from fixy.ai' },
   { name: '/settings', desc: 'View or update global settings' },
   { name: '/red-room', desc: 'Toggle adversarial mode on/off' },
-  { name: '/diff',      desc: 'Show git diff & untracked files (/d)' },
-  { name: '/copy',      desc: 'Copy last response to clipboard' },
-  { name: '/clear',     desc: 'Clear the terminal screen (/cls)' },
-  { name: '/shortcuts', desc: 'Show keyboard shortcuts & commands' },
-  { name: '/compact',   desc: 'Reset adapter session' },
-  { name: '/reset',     desc: 'Abort current turn and reset all sessions' },
-  { name: '/quit',      desc: 'Exit Fixy' },
+  { name: '/diff', desc: 'Show git diff & untracked files (/d)' },
+  { name: '/copy', desc: 'Copy last response to clipboard' },
+  { name: '/clear', desc: 'Clear the terminal screen (/cls)' },
+  { name: '/shortcuts', desc: 'Show keyboard shortcuts & multi-line input' },
+  { name: '/compact', desc: 'Reset adapter session' },
+  { name: '/reset', desc: 'Abort current turn and reset all sessions' },
+  { name: '/quit', desc: 'Exit Fixy' },
 ];
 
 export async function startRepl(params: ReplParams): Promise<void> {
@@ -134,6 +134,9 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let turnAbort: AbortController | null = null;
   let spinner: ReturnType<typeof createSpinner> | null = null;
   let lastResponse = '';
+  let multilineLines: string[] = [];
+  let altEnterPressed = false;
+  const CONTINUATION_PROMPT = '\x1b[2m…\x1b[0m  ';
 
   const settings = await loadSettings();
   const disabledAdapters = new Set(settings.disabledAdapters ?? []);
@@ -229,12 +232,26 @@ export async function startRepl(params: ReplParams): Promise<void> {
     };
 
     // Helper: find menu items matching a trigger
-    const getFilteredMenu = (trigger: string, menu: Array<{ name: string; desc: string }>): Array<{ name: string; desc: string }> => {
+    const getFilteredMenu = (
+      trigger: string,
+      menu: Array<{ name: string; desc: string }>,
+    ): Array<{ name: string; desc: string }> => {
       const lower = trigger.toLowerCase();
       return menu.filter((item) => item.name.toLowerCase().startsWith(lower));
     };
 
     process.stdin.on('keypress', (_str, key) => {
+      if (
+        key?.name === 'return' &&
+        (key.meta || key.sequence === '\x1b\r' || key.sequence === '\x1b\n')
+      ) {
+        if (menuItems.length === 0 && !turnActive) {
+          altEnterPressed = true;
+          eraseMenu();
+          return;
+        }
+      }
+
       if (key?.name === 'escape') {
         if (menuItems.length > 0) {
           eraseMenu();
@@ -291,9 +308,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
         if (hasSlash) {
           const lower = line.toLowerCase();
-          const filtered = SLASH_MENU.filter((item) =>
-            item.name.toLowerCase().startsWith(lower),
-          );
+          const filtered = SLASH_MENU.filter((item) => item.name.toLowerCase().startsWith(lower));
           if (filtered.length > 0) {
             drawMenu(filtered);
           } else {
@@ -341,9 +356,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   const authForHeartbeat = await loadAuth();
   if (authForHeartbeat) {
-    heartbeatTimer = setInterval(() => {
-      heartbeat(thread.id).catch(() => {});
-    }, 5 * 60 * 1000);
+    heartbeatTimer = setInterval(
+      () => {
+        heartbeat(thread.id).catch(() => {});
+      },
+      5 * 60 * 1000,
+    );
   }
 
   process.on('exit', () => {
@@ -362,11 +380,11 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   });
 
-  const ask = (): Promise<string | null> =>
+  const ask = (prompt: string = PROMPT): Promise<string | null> =>
     new Promise((resolve) => {
       const onClose = (): void => resolve(null);
       rl.once('close', onClose);
-      rl.question(PROMPT, (answer) => {
+      rl.question(prompt, (answer) => {
         rl.removeListener('close', onClose);
         resolve(answer);
       });
@@ -374,7 +392,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
   const askChoice = (promptText: string, signal?: AbortSignal): Promise<string | null> =>
     new Promise((resolve) => {
-      if (signal?.aborted) { resolve(null); return; }
+      if (signal?.aborted) {
+        resolve(null);
+        return;
+      }
 
       let settled = false;
       const settle = (val: string | null): void => {
@@ -399,7 +420,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
       });
     });
 
-  const resolveModelChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+  const resolveModelChoice = async (
+    msgContent: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> => {
     // Extract adapter id from MODEL_SELECT @<id>
     const adapterMatch = msgContent.match(/^MODEL_SELECT @(\w+)/);
     const adapterId = adapterMatch?.[1] ?? thread.workerModel;
@@ -410,9 +434,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     const hasEffort = msgContent.includes('Effort (optional)');
 
     // Step 1: Pick model — number from list or type a name
-    const modelPrompt = modelCount > 0
-      ? `\x1b[38;5;105m[1-${modelCount}] or model name\x1b[0m `
-      : `\x1b[38;5;105mmodel name\x1b[0m `;
+    const modelPrompt =
+      modelCount > 0
+        ? `\x1b[38;5;105m[1-${modelCount}] or model name\x1b[0m `
+        : `\x1b[38;5;105mmodel name\x1b[0m `;
     const pickModel = async (): Promise<string | null> => {
       for (;;) {
         const raw = await askChoice(modelPrompt, signal);
@@ -439,7 +464,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     // Step 2: Pick effort (Codex only)
     let effortLetter = '';
     if (hasEffort) {
-      const effortRaw = await askChoice('\x1b[38;5;105m[a-d] effort or Enter to skip\x1b[0m ', signal);
+      const effortRaw = await askChoice(
+        '\x1b[38;5;105m[a-d] effort or Enter to skip\x1b[0m ',
+        signal,
+      );
       if (effortRaw === null) return null;
       const letter = effortRaw.trim().toLowerCase();
       if (/^[a-d]$/.test(letter)) effortLetter = letter;
@@ -453,7 +481,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     return `@fixy /model @${adapterId} apply ${modelChoice}${effortLetter} ${save}`;
   };
 
-  const resolveAdapterToggle = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+  const resolveAdapterToggle = async (
+    msgContent: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> => {
     const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
     const adapters = matches.map((m) => m[2] ?? '');
     if (adapters.length === 0) return null;
@@ -467,7 +498,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
-  const resolveWorkerChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+  const resolveWorkerChoice = async (
+    msgContent: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> => {
     const matches = [...msgContent.matchAll(/\[(\d+)\] @(\w+)/g)];
     const adapters = matches.map((m) => m[2] ?? '');
     if (adapters.length === 0) return null;
@@ -481,7 +515,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
-  const resolveDisagreementChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+  const resolveDisagreementChoice = async (
+    msgContent: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> => {
     const matchA = msgContent.match(/\[1\] Go with @(\w+)/);
     const matchB = msgContent.match(/\[2\] Go with @(\w+)/);
     const agentA = matchA?.[1] ?? thread.workerModel;
@@ -498,7 +535,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
     }
   };
 
-  const resolveThreadChoice = async (msgContent: string, signal?: AbortSignal): Promise<string | null> => {
+  const resolveThreadChoice = async (
+    msgContent: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> => {
     // Parse thread ids from numbered list: [1] abcdef12… <full-id>
     const matches = [...msgContent.matchAll(/\[(\d+)\]\s+\w+…\s+([\w-]+)/g)];
     const threadIds = matches.map((m) => m[2] ?? '');
@@ -561,7 +601,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const lastMsg = thread.messages[thread.messages.length - 1];
       if (lastMsg && lastMsg.role === 'system') {
         // For interactive protocol messages, strip the first line (protocol keyword) before display.
-        const PROTOCOL_PREFIXES = ['WORKER_SELECT', 'MODEL_SELECT', 'ADAPTER_TOGGLE_SELECT', 'THREAD_SELECT', 'THREAD_SWITCH', 'HELP'];
+        const PROTOCOL_PREFIXES = [
+          'WORKER_SELECT',
+          'MODEL_SELECT',
+          'ADAPTER_TOGGLE_SELECT',
+          'THREAD_SELECT',
+          'THREAD_SWITCH',
+          'HELP',
+        ];
         const displayContent = PROTOCOL_PREFIXES.some((p) => lastMsg.content.startsWith(p))
           ? lastMsg.content.split('\n').slice(1).join('\n')
           : lastMsg.content;
@@ -610,12 +657,16 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
         if (lastMsg.content.startsWith('THREAD_SWITCH')) {
           // Auto-switch to the thread mentioned in the message (used by /fork)
-          const switchMatch = lastMsg.content.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+          const switchMatch = lastMsg.content.match(
+            /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+          );
           if (switchMatch?.[1]) {
             const switchId = switchMatch[1];
             try {
               thread = await store.getThread(switchId, thread.projectRoot);
-              process.stdout.write(`\x1b[38;5;105m✓\x1b[0m Switched to session ${switchId.slice(0, 8)}…\n`);
+              process.stdout.write(
+                `\x1b[38;5;105m✓\x1b[0m Switched to session ${switchId.slice(0, 8)}…\n`,
+              );
             } catch {
               // Thread not found — ignore, the message was already displayed
             }
@@ -627,7 +678,9 @@ export async function startRepl(params: ReplParams): Promise<void> {
           const threadId = await resolveThreadChoice(lastMsg.content, interactiveSignal);
           if (threadId !== null) {
             thread = await store.getThread(threadId, thread.projectRoot);
-            process.stdout.write(`\x1b[38;5;105m✓\x1b[0m Switched to session ${threadId.slice(0, 8)}…\n`);
+            process.stdout.write(
+              `\x1b[38;5;105m✓\x1b[0m Switched to session ${threadId.slice(0, 8)}…\n`,
+            );
 
             // Show last few messages as context
             const recent = thread.messages.slice(-6);
@@ -635,10 +688,12 @@ export async function startRepl(params: ReplParams): Promise<void> {
               process.stdout.write(`\n\x1b[2m── recent history ──\x1b[0m\n`);
               for (const msg of recent) {
                 if (msg.role === 'user') {
-                  const preview = msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
+                  const preview =
+                    msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
                   process.stdout.write(`\x1b[37m  you: ${preview}\x1b[0m\n`);
                 } else if (msg.role === 'agent' && msg.agentId) {
-                  const preview = msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
+                  const preview =
+                    msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content;
                   process.stdout.write(`\x1b[2m  @${msg.agentId}: ${preview}\x1b[0m\n`);
                 }
               }
@@ -671,15 +726,35 @@ export async function startRepl(params: ReplParams): Promise<void> {
   };
 
   while (true) {
-    const line = await ask();
+    const activePrompt = multilineLines.length > 0 ? CONTINUATION_PROMPT : PROMPT;
+    const line = await ask(activePrompt);
 
     if (line === null) {
+      if (multilineLines.length > 0) {
+        multilineLines = [];
+        altEnterPressed = false;
+        process.stdout.write('\x1b[2mcancelled\x1b[0m\n');
+        continue;
+      }
       process.stdout.write('\x1b[2mgoodbye\x1b[0m\n');
       break;
     }
 
-    // Normalize: lowercase @mentions and /commands, preserve message body case
-    const rawInput = line.trim();
+    if (altEnterPressed) {
+      altEnterPressed = false;
+      multilineLines.push(line);
+      continue;
+    }
+
+    const trimmed = line.trimEnd();
+    if (trimmed.endsWith('\\') && !trimmed.endsWith('\\\\')) {
+      multilineLines.push(trimmed.slice(0, -1).trimEnd());
+      continue;
+    }
+
+    const rawInput =
+      multilineLines.length > 0 ? [...multilineLines, line.trim()].join('\n') : line.trim();
+    multilineLines = [];
     if (rawInput.length === 0) continue;
 
     // Shell command execution: !command
