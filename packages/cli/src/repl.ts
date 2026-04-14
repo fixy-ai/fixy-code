@@ -138,6 +138,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
   let lastResponse = '';
   let multilineLines: string[] = [];
   let altEnterPressed = false;
+  let pendingMenuSelection: string | null = null; // set when Enter selects a menu item
   const CONTINUATION_PROMPT = '\x1b[2m…\x1b[0m  ';
 
   const sessionStats = {
@@ -186,7 +187,6 @@ export async function startRepl(params: ReplParams): Promise<void> {
     let menuHeight = 0;
     let menuItems: Array<{ name: string; desc: string }> = [];
     let selectedIndex = 0;
-    let menuSelectionApplied = false; // flag: Enter applied a menu selection, skip line event
 
     const eraseMenu = (): void => {
       if (menuHeight === 0) return;
@@ -201,17 +201,37 @@ export async function startRepl(params: ReplParams): Promise<void> {
       selectedIndex = 0;
     };
 
+    const MAX_MENU_VISIBLE = 10;
+
     const drawMenu = (items: Array<{ name: string; desc: string }>, selIdx = 0): void => {
       eraseMenu();
       menuItems = items;
       selectedIndex = Math.min(selIdx, items.length - 1);
-      const lines = items.map((item, i) => {
-        const isSelected = i === selectedIndex;
+
+      // Scroll window: keep selectedIndex visible within MAX_MENU_VISIBLE
+      let scrollStart = 0;
+      if (items.length > MAX_MENU_VISIBLE) {
+        // Keep selection centered-ish in the visible window
+        scrollStart = Math.max(0, selectedIndex - Math.floor(MAX_MENU_VISIBLE / 2));
+        scrollStart = Math.min(scrollStart, items.length - MAX_MENU_VISIBLE);
+      }
+      const visibleItems = items.slice(scrollStart, scrollStart + MAX_MENU_VISIBLE);
+
+      const lines = visibleItems.map((item, i) => {
+        const realIdx = scrollStart + i;
+        const isSelected = realIdx === selectedIndex;
         const bg = isSelected ? MENU_HIGHLIGHT_BG : '';
         const nameColor = isSelected ? MENU_INDIGO : MENU_DIM;
         const descColor = MENU_DIM;
         return `${bg}  ${nameColor}${item.name.padEnd(12)}${MENU_RESET}${bg}${descColor}${item.desc}${MENU_RESET}`;
       });
+
+      // Show scroll indicator if items are truncated
+      if (items.length > MAX_MENU_VISIBLE) {
+        const indicator = `${MENU_DIM}  ↕ ${items.length} items (${selectedIndex + 1}/${items.length})${MENU_RESET}`;
+        lines.push(indicator);
+      }
+
       process.stdout.write('\x1b[s\n' + lines.join('\n') + '\x1b[u');
       menuHeight = lines.length;
     };
@@ -221,14 +241,25 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const selected = menuItems[selectedIndex];
       if (!selected) return;
       const line = rl.line;
-
-      // Find the trigger token in the current line (last @ or leading /)
       const lastAt = line.lastIndexOf('@');
       const isSlash = line.startsWith('/');
 
-      if (fromEnter) menuSelectionApplied = true;
       eraseMenu();
-      // Clear current line and replace with selection
+
+      if (fromEnter) {
+        // Store the resolved text — ask() will intercept it instead of the partial text.
+        // This avoids rl.write() race conditions (the approach Codex and Gemini use).
+        if (isSlash) {
+          pendingMenuSelection = selected.name;
+        } else if (lastAt >= 0) {
+          pendingMenuSelection = line.slice(0, lastAt) + selected.name;
+        }
+        // Let readline process Enter naturally — 'line' event fires with old text,
+        // but ask() returns pendingMenuSelection instead.
+        return;
+      }
+
+      // Tab completion: replace text in buffer (safe — no 'line' event race)
       process.stdout.write('\r\x1b[2K');
       if (isSlash) {
         rl.write(null, { ctrl: true, name: 'u' });
@@ -352,11 +383,6 @@ export async function startRepl(params: ReplParams): Promise<void> {
 
     rl.on('line', () => {
       eraseMenu();
-      if (menuSelectionApplied) {
-        menuSelectionApplied = false;
-        // Re-show the prompt — the line event fired for the old input, ignore it
-        rl.prompt();
-      }
     });
   }
   // ──────────────────────────────────────────────────────────────────────────
@@ -395,7 +421,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
       rl.once('close', onClose);
       rl.question(prompt, (answer) => {
         rl.removeListener('close', onClose);
-        resolve(answer);
+        // If a menu selection was applied via Enter, use that instead of the partial text.
+        if (pendingMenuSelection !== null) {
+          const sel = pendingMenuSelection;
+          pendingMenuSelection = null;
+          resolve(sel);
+        } else {
+          resolve(answer);
+        }
       });
     });
 
@@ -818,8 +851,9 @@ export async function startRepl(params: ReplParams): Promise<void> {
       .replace(/@\w+/g, (m) => m.toLowerCase())
       .replace(/^\/\w+/g, (m) => m.toLowerCase());
 
-    // Auto-resolve partial /commands to first match (e.g. /qu → /quit, /a → /all)
-    if (normalized.startsWith('/') && !normalized.includes(' ')) {
+    // Auto-resolve partial /commands to first match (e.g. /qu → /quit, /he → /help)
+    // Requires at least 2 chars (e.g. "/a") to avoid bare "/" matching everything.
+    if (normalized.startsWith('/') && normalized.length >= 2 && !normalized.includes(' ')) {
       const match = SLASH_MENU.find((item) => item.name.startsWith(normalized));
       if (match) normalized = match.name;
     }
