@@ -25,7 +25,7 @@ import { parseCodexStreamJson } from './parse.js';
 
 // Codex CLI writes skill-loader errors and stdin warnings to stderr on startup — suppress them.
 const CODEX_NOISE_RE = /^[0-9TZ:.+-]+ (ERROR|WARN) codex_/;
-const CODEX_STDIN_WARNING = 'warning: Reading additional input from stdin';
+const CODEX_STDIN_WARNING = 'Reading additional input from stdin';
 
 function filterCodexNoise(stderr: string): string {
   return stderr
