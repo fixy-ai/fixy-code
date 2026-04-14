@@ -620,12 +620,15 @@ export async function startRepl(params: ReplParams): Promise<void> {
       // Show spinner while waiting for agent response
       const isFixyCommand = /^@fixy\s*\//.test(input);
       const isAllCommand = /@all\b/i.test(input) || /^@fixy\s+\/all\b/.test(input);
+      // Detect if user explicitly typed @agent or used bare message (worker)
+      const explicitMention = input.match(/^@(claude|codex|gemini)\b/)?.[1] ?? null;
+      const isWorkerCall = !explicitMention && !isFixyCommand && !isAllCommand;
       if (isAllCommand) {
         spinner.start('@all');
       } else if (!isFixyCommand) {
-        const mentionMatch = input.match(/^@(\w+)/);
-        const targetAgent = mentionMatch?.[1] ?? thread.workerModel ?? 'fixy';
-        spinner.start(`@${targetAgent}`);
+        // Label shows @worker or @agent, color always matches the actual underlying agent
+        const actualAgent = explicitMention ?? (thread.workerModel ?? 'claude');
+        spinner.start(isWorkerCall ? '@worker' : `@${explicitMention}`, actualAgent);
       }
       let headerPrinted = false;
 
@@ -645,8 +648,10 @@ export async function startRepl(params: ReplParams): Promise<void> {
                 codex: '\x1b[38;5;75m',    // light blue
                 gemini: '\x1b[38;5;141m',  // purple
               };
+              // Show @worker for bare messages, @agent for explicit mentions
+              const label = isWorkerCall ? '@worker' : `@${agentId}`;
               const color = AGENT_COLORS[agentId] ?? '\x1b[38;5;105m';
-              process.stdout.write(`${color}@${agentId}:\x1b[0m\n`);
+              process.stdout.write(`${color}${label}:\x1b[0m\n`);
             }
             headerPrinted = true;
           }

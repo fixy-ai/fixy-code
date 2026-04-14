@@ -85,7 +85,7 @@ const SPINNER_AGENT_COLORS: Record<string, string> = {
   gemini: '\x1b[38;5;141m',  // purple
 };
 
-export function createSpinner(): { start(label: string): void; stop(): void } {
+export function createSpinner(): { start(label: string, colorAgent?: string): void; stop(): void } {
   const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let frameIndex = 0;
@@ -99,11 +99,11 @@ export function createSpinner(): { start(label: string): void; stop(): void } {
   }
 
   return {
-    start(label: string): void {
+    start(label: string, colorAgent?: string): void {
       frameIndex = 0;
       startTime = Date.now();
-      // Get brand color for the agent (strip @ prefix for lookup)
-      const agentId = label.replace('@', '');
+      // Get brand color: use colorAgent if provided, otherwise extract from label
+      const agentId = colorAgent ?? label.replace('@', '');
       const agentColor = SPINNER_AGENT_COLORS[agentId] ?? FIXY_COLOR;
       intervalId = setInterval(() => {
         const frame = frames[frameIndex % frames.length] ?? frames[0] ?? '⠋';
