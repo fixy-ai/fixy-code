@@ -101,22 +101,22 @@ const MENU_HIGHLIGHT_BG = '\x1b[48;5;236m'; // dark gray bg for selected item
 const MENU_RESET = '\x1b[0m';
 
 const SLASH_MENU: Array<{ name: string; desc: string }> = [
-  { name: '/all',      desc: 'run collaboration engine on all agents (/a)' },
-  { name: '/worker',   desc: 'set the worker adapter (/w)' },
-  { name: '/model',    desc: 'view or change adapter models (/m)' },
-  { name: '/new',      desc: 'create a new session (/n)' },
-  { name: '/threads',  desc: 'list & switch sessions (/t)' },
-  { name: '/help',     desc: 'show all commands & usage (/h)' },
-  { name: '/status',   desc: 'show adapter status (/st)' },
-  { name: '/account',  desc: 'view account, plan & usage' },
-  { name: '/upgrade',  desc: 'open plan management in browser' },
-  { name: '/login',    desc: 'sign in to fixy.ai' },
-  { name: '/logout',   desc: 'sign out from fixy.ai' },
-  { name: '/settings', desc: 'view or update global settings' },
-  { name: '/red-room', desc: 'toggle adversarial mode on/off' },
-  { name: '/compact',  desc: 'reset adapter session' },
-  { name: '/reset',    desc: 'abort current turn and reset all sessions' },
-  { name: '/quit',     desc: 'exit fixy' },
+  { name: '/all',      desc: 'Run collaboration engine on all agents (/a)' },
+  { name: '/worker',   desc: 'Set the worker adapter (/w)' },
+  { name: '/model',    desc: 'View or change adapter models (/m)' },
+  { name: '/new',      desc: 'Create a new session (/n)' },
+  { name: '/threads',  desc: 'List & switch sessions (/t)' },
+  { name: '/help',     desc: 'Show all commands & usage (/h)' },
+  { name: '/status',   desc: 'Show adapter status (/st)' },
+  { name: '/account',  desc: 'View account, plan & usage' },
+  { name: '/upgrade',  desc: 'Open plan management in browser' },
+  { name: '/login',    desc: 'Sign in to fixy.ai' },
+  { name: '/logout',   desc: 'Sign out from fixy.ai' },
+  { name: '/settings', desc: 'View or update global settings' },
+  { name: '/red-room', desc: 'Toggle adversarial mode on/off' },
+  { name: '/compact',  desc: 'Reset adapter session' },
+  { name: '/reset',    desc: 'Abort current turn and reset all sessions' },
+  { name: '/quit',     desc: 'Exit Fixy' },
 ];
 
 export async function startRepl(params: ReplParams): Promise<void> {
@@ -166,6 +166,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
     let menuHeight = 0;
     let menuItems: Array<{ name: string; desc: string }> = [];
     let selectedIndex = 0;
+    let menuSelectionApplied = false; // flag: Enter applied a menu selection, skip line event
 
     const eraseMenu = (): void => {
       if (menuHeight === 0) return;
@@ -195,7 +196,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
       menuHeight = lines.length;
     };
 
-    const applySelection = (): void => {
+    const applySelection = (fromEnter = false): void => {
       if (menuItems.length === 0) return;
       const selected = menuItems[selectedIndex];
       if (!selected) return;
@@ -205,15 +206,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
       const lastAt = line.lastIndexOf('@');
       const isSlash = line.startsWith('/');
 
+      if (fromEnter) menuSelectionApplied = true;
       eraseMenu();
       // Clear current line and replace with selection
       process.stdout.write('\r\x1b[2K');
       if (isSlash) {
-        // Replace the whole /command
-        rl.write(null, { ctrl: true, name: 'u' }); // clear line
+        rl.write(null, { ctrl: true, name: 'u' });
         rl.write(selected.name + ' ');
       } else if (lastAt >= 0) {
-        // Replace from the @ to end, preserving text before @
         const before = line.slice(0, lastAt);
         rl.write(null, { ctrl: true, name: 'u' });
         rl.write(before + selected.name + ' ');
@@ -259,7 +259,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
           return;
         }
         if (key?.name === 'return') {
-          applySelection();
+          applySelection(true);
           return;
         }
         if (key?.name === 'tab') {
@@ -309,7 +309,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
       });
     });
 
-    rl.on('line', () => eraseMenu());
+    rl.on('line', () => {
+      eraseMenu();
+      if (menuSelectionApplied) {
+        menuSelectionApplied = false;
+        // Re-show the prompt — the line event fired for the old input, ignore it
+        rl.prompt();
+      }
+    });
   }
   // ──────────────────────────────────────────────────────────────────────────
 
