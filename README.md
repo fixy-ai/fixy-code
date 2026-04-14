@@ -47,7 +47,7 @@ Before installing Fixy Code, make sure you have at least one of these installed 
 | Claude Code | `npm install -g @anthropic-ai/claude-code` | `claude` |
 | Codex CLI | `npm install -g @openai/codex` | `codex` |
 
-You need Node.js 20 or higher. macOS first — Linux should work. Windows is not supported yet.
+You need Node.js 20 or higher. Works on macOS, Linux, and Windows.
 
 ---
 
