@@ -41,12 +41,12 @@ describe('Router', () => {
 
   it('rule 1: single mention dispatches to that adapter', () => {
     const result = router.parse('@claude do something');
-    expect(result).toEqual({ kind: 'mention', agentIds: ['claude'], body: 'do something' });
+    expect(result).toEqual({ kind: 'mention', agentIds: ['claude'], body: 'do something', fileRefs: [] });
   });
 
   it('rule 2: multi mention dispatches to all in order', () => {
     const result = router.parse('@claude @codex brainstorm');
-    expect(result).toEqual({ kind: 'mention', agentIds: ['claude', 'codex'], body: 'brainstorm' });
+    expect(result).toEqual({ kind: 'mention', agentIds: ['claude', 'codex'], body: 'brainstorm', fileRefs: [] });
   });
 
   it('rule 3: @fixy routes to fixy command handler', () => {
@@ -61,7 +61,7 @@ describe('Router', () => {
 
   it('rule 4: no mention falls to bare', () => {
     const result = router.parse('just do it');
-    expect(result).toEqual({ kind: 'bare', body: 'just do it' });
+    expect(result).toEqual({ kind: 'bare', body: 'just do it', fileRefs: [] });
   });
 
   it('rule 5: unknown mention returns error', () => {
@@ -71,7 +71,7 @@ describe('Router', () => {
 
   it('empty string returns bare', () => {
     const result = router.parse('');
-    expect(result).toEqual({ kind: 'bare', body: '' });
+    expect(result).toEqual({ kind: 'bare', body: '', fileRefs: [] });
   });
 
   it('@fixy alone with no rest', () => {

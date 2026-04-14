@@ -3,18 +3,32 @@
 import type { AdapterRegistry } from './registry.js';
 
 export type ParsedInput =
-  | { kind: 'mention'; agentIds: string[]; body: string }
+  | { kind: 'mention'; agentIds: string[]; body: string; fileRefs: string[] }
   | { kind: 'fixy'; rest: string }
-  | { kind: 'bare'; body: string }
+  | { kind: 'bare'; body: string; fileRefs: string[] }
   | { kind: 'error'; reason: string };
 
 const MENTION_RE = /^@(\w+)/;
 const INLINE_MENTION_RE = /@(\w+)/g;
+const FILE_REF_RE = /@(\.[\w./\\-]+|[\w.-]+\/[\w./\\-]*)/g;
 
 export class Router {
   constructor(private readonly registry: AdapterRegistry) {}
 
+  _extractFileRefs(input: string): { fileRefs: string[]; cleaned: string } {
+    const fileRefs: string[] = [];
+    const cleaned = input.replace(FILE_REF_RE, (_match, path: string) => {
+      fileRefs.push(path);
+      return '';
+    }).replace(/\s{2,}/g, ' ').trim();
+    return { fileRefs, cleaned };
+  }
+
   parse(input: string): ParsedInput {
+    // ── Extract file references before any other processing ──
+    const { fileRefs, cleaned } = this._extractFileRefs(input);
+    input = cleaned;
+
     // ── Leading mentions (original behavior) ──
     if (input.startsWith('@')) {
       const tokens: string[] = [];
@@ -43,7 +57,7 @@ export class Router {
             return { kind: 'error', reason: `unknown agent: @${token}` };
           }
         }
-        return { kind: 'mention', agentIds: tokens, body: remaining };
+        return { kind: 'mention', agentIds: tokens, body: remaining, fileRefs };
       }
     }
 
@@ -74,10 +88,10 @@ export class Router {
       if (agentIds.length > 0) {
         // Strip mentions from the body
         const body = input.replace(INLINE_MENTION_RE, '').trim();
-        return { kind: 'mention', agentIds, body };
+        return { kind: 'mention', agentIds, body, fileRefs };
       }
     }
 
-    return { kind: 'bare', body: input };
+    return { kind: 'bare', body: input, fileRefs };
   }
 }

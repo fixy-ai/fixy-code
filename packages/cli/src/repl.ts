@@ -300,15 +300,24 @@ export async function startRepl(params: ReplParams): Promise<void> {
             eraseMenu();
           }
         } else if (lastAt >= 0) {
-          const atToken = line.slice(lastAt).toLowerCase();
-          if (atToken === '@') {
-            drawMenu(atMenu);
+          const atToken = line.slice(lastAt);
+          const afterAt = atToken.slice(1); // text after @
+          // File path detection: starts with . or /
+          if (afterAt.startsWith('.') || afterAt.startsWith('/')) {
+            // Show file path hint instead of agent menu
+            eraseMenu();
+            drawMenu([{ name: '@<path>', desc: '(type file path, e.g. @./src/file.ts)' }]);
           } else {
-            const filtered = getFilteredMenu(atToken, atMenu);
-            if (filtered.length > 0) {
-              drawMenu(filtered);
+            const lowerToken = atToken.toLowerCase();
+            if (lowerToken === '@') {
+              drawMenu(atMenu);
             } else {
-              eraseMenu();
+              const filtered = getFilteredMenu(lowerToken, atMenu);
+              if (filtered.length > 0) {
+                drawMenu(filtered);
+              } else {
+                eraseMenu();
+              }
             }
           }
         } else {

@@ -1,6 +1,8 @@
 // packages/core/src/turn.ts
 
 import { randomUUID } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
+import { resolve, normalize } from 'node:path';
 
 import type { FixyExecutionContext } from './adapter.js';
 import type { FixyMessage, FixyThread } from './thread.js';
@@ -57,8 +59,16 @@ export class TurnController {
           await this._appendSystemMessage('maximum 3 adapters per turn', params);
           return;
         }
+        let mentionBody = parsed.body;
+        if (parsed.fileRefs.length > 0) {
+          const { prefix, errors } = await this._resolveFileRefs(parsed.fileRefs, thread.projectRoot);
+          for (const err of errors) {
+            params.onLog('stderr', err + '\n');
+          }
+          mentionBody = prefix + mentionBody;
+        }
         for (const agentId of parsed.agentIds) {
-          await this._dispatchToAdapter(agentId, parsed.body, params);
+          await this._dispatchToAdapter(agentId, mentionBody, params);
         }
         break;
       }
@@ -80,7 +90,15 @@ export class TurnController {
       case 'bare': {
         const lastAgent = this._findLastAgentId(thread);
         const resolvedAgentId = lastAgent ?? thread.workerModel;
-        await this._dispatchToAdapter(resolvedAgentId, parsed.body, params);
+        let bareBody = parsed.body;
+        if (parsed.fileRefs.length > 0) {
+          const { prefix, errors } = await this._resolveFileRefs(parsed.fileRefs, thread.projectRoot);
+          for (const err of errors) {
+            params.onLog('stderr', err + '\n');
+          }
+          bareBody = prefix + bareBody;
+        }
+        await this._dispatchToAdapter(resolvedAgentId, bareBody, params);
         break;
       }
 
@@ -158,6 +176,56 @@ export class TurnController {
     await params.store.appendMessage(params.thread.id, params.thread.projectRoot, agentMsg);
 
     params.thread.agentSessions[agentId] = result.session;
+  }
+
+  private async _resolveFileRefs(
+    fileRefs: string[],
+    projectRoot: string,
+  ): Promise<{ prefix: string; errors: string[] }> {
+    const MAX_FILE_SIZE = 100 * 1024; // 100KB
+    const BLOCKED_SEGMENTS = ['node_modules', '.git'];
+    const sections: string[] = [];
+    const errors: string[] = [];
+
+    for (const ref of fileRefs) {
+      const normalized = normalize(ref);
+      if (BLOCKED_SEGMENTS.some((seg) => normalized.split('/').includes(seg) || normalized.split('\\').includes(seg))) {
+        errors.push(`Blocked path: ${ref}`);
+        continue;
+      }
+
+      const absPath = resolve(projectRoot, ref);
+      // Ensure resolved path is within project root
+      if (!absPath.startsWith(projectRoot)) {
+        errors.push(`Path escapes project root: ${ref}`);
+        continue;
+      }
+
+      try {
+        const st = await stat(absPath);
+        if (!st.isFile()) {
+          errors.push(`Not a file: ${ref}`);
+          continue;
+        }
+        if (st.size > MAX_FILE_SIZE) {
+          errors.push(`File too large or binary: ${ref}`);
+          continue;
+        }
+
+        const content = await readFile(absPath, 'utf8');
+        // Basic binary detection: check for null bytes
+        if (content.includes('\0')) {
+          errors.push(`File too large or binary: ${ref}`);
+          continue;
+        }
+
+        sections.push(`[Content of @${ref}]:\n${content}`);
+      } catch {
+        errors.push(`File not found: ${ref}`);
+      }
+    }
+
+    return { prefix: sections.length > 0 ? sections.join('\n\n') + '\n\n' : '', errors };
   }
 
   private async _appendSystemMessage(content: string, params: TurnParams): Promise<void> {
