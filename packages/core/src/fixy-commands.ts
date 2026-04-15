@@ -1563,8 +1563,9 @@ export class FixyCommandRunner {
    * Run adapters in parallel with progressive reveal:
    * - First agent to produce output streams LIVE to terminal
    * - Other agents buffer their output in background
-   * - As each agent finishes, print its buffered output immediately
-   * - Messages saved sequentially to avoid file write races
+   * - As each agent finishes, its response prints immediately
+   * - Animated spinner shows which agents are still pending
+   * - Per-agent timeout (90s) prevents slow agents from blocking
    */
   private async _runParallelProgressiveReveal(
     adapters: Array<{
@@ -1575,9 +1576,11 @@ export class FixyCommandRunner {
     prompt: string,
     ctx: FixyCommandContext,
   ): Promise<void> {
-    // Track which agent is currently streaming live
-    let liveAgentId: string | null = null;
-    const completedResults: Array<{
+    const AGENT_TIMEOUT_MS = 90_000;
+    const isTTY = process.stdout?.isTTY ?? false;
+    const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+    type AgentResult = {
       adapterId: string;
       output: string;
       summary: string;
@@ -1585,10 +1588,45 @@ export class FixyCommandRunner {
       runId: string;
       patches: FixyExecutionResult['patches'];
       warnings: FixyExecutionResult['warnings'];
-    }> = [];
+      timedOut?: boolean;
+    };
+
+    // Track which agent is currently streaming live
+    let liveAgentId: string | null = null;
+    const completedSet = new Set<string>();
+    const completedResults: AgentResult[] = [];
     let pendingResolve: (() => void) | null = null;
 
-    // Start all adapters in parallel
+    // Waiting spinner state
+    let waitingSpinnerInterval: ReturnType<typeof setInterval> | null = null;
+    let waitingSpinnerIdx = 0;
+    let waitingSpinnerStart = 0;
+
+    const startWaitingSpinner = (): void => {
+      if (!isTTY) return;
+      waitingSpinnerStart = Date.now();
+      waitingSpinnerIdx = 0;
+      waitingSpinnerInterval = setInterval(() => {
+        const pending = adapters.filter((a) => !completedSet.has(a.id)).map((a) => `@${a.id}`);
+        if (pending.length === 0) { stopWaitingSpinner(); return; }
+        const frame = spinnerFrames[waitingSpinnerIdx % spinnerFrames.length] ?? '⠋';
+        const elapsed = Math.floor((Date.now() - waitingSpinnerStart) / 1000);
+        const label = pending.length === 1 ? `waiting for ${pending[0]}` : `waiting for ${pending.join(', ')}`;
+        const timer = elapsed > 0 ? ` (${elapsed}s)` : '';
+        process.stdout.write(`\r\x1b[2K  \x1b[38;5;105m${frame}${RESET} \x1b[2m${label}...${timer}${RESET}`);
+        waitingSpinnerIdx++;
+      }, 100);
+    };
+
+    const stopWaitingSpinner = (): void => {
+      if (waitingSpinnerInterval !== null) {
+        clearInterval(waitingSpinnerInterval);
+        waitingSpinnerInterval = null;
+      }
+      if (isTTY) process.stdout.write('\r\x1b[2K');
+    };
+
+    // Start all adapters in parallel with timeout
     const promises = adapters.map((adapter) => {
       const runId = randomUUID();
       const outputBuffer: string[] = [];
@@ -1596,19 +1634,17 @@ export class FixyCommandRunner {
 
       const onLog = (_stream: 'stdout' | 'stderr', chunk: string): void => {
         if (liveAgentId === null) {
-          // First agent to produce output — claim the live slot
           liveAgentId = adapter.id;
+          stopWaitingSpinner();
         }
 
         if (liveAgentId === adapter.id) {
-          // This agent is streaming live
           if (!headerPrinted) {
             ctx.onLog('stdout', `\n${agentLabel(adapter.id)}\n`);
             headerPrinted = true;
           }
           ctx.onLog('stdout', chunk);
         } else {
-          // Another agent is live — buffer this agent's output
           outputBuffer.push(chunk);
         }
       };
@@ -1632,18 +1668,35 @@ export class FixyCommandRunner {
         signal: ctx.signal,
       };
 
-      return adapter.execute(execCtx).then((result) => {
-        const entry = {
-          adapterId: adapter.id,
-          output: outputBuffer.join(''),
-          summary: result.summary,
-          session: result.session,
-          runId,
-          patches: result.patches,
-          warnings: result.warnings,
-        };
+      // Race between adapter execution and timeout
+      const adapterPromise = adapter.execute(execCtx).then((result): AgentResult => ({
+        adapterId: adapter.id,
+        output: outputBuffer.join(''),
+        summary: result.summary,
+        session: result.session,
+        runId,
+        patches: result.patches,
+        warnings: result.warnings,
+      }));
+
+      const timeoutPromise = new Promise<AgentResult>((resolve) => {
+        setTimeout(() => {
+          resolve({
+            adapterId: adapter.id,
+            output: '',
+            summary: `@${adapter.id} timed out after ${AGENT_TIMEOUT_MS / 1000}s`,
+            session: null,
+            runId,
+            patches: [],
+            warnings: [`@${adapter.id} timed out`],
+            timedOut: true,
+          });
+        }, AGENT_TIMEOUT_MS);
+      });
+
+      return Promise.race([adapterPromise, timeoutPromise]).then((entry) => {
+        completedSet.add(adapter.id);
         completedResults.push(entry);
-        // Signal that an agent completed
         if (pendingResolve) {
           pendingResolve();
           pendingResolve = null;
@@ -1651,40 +1704,51 @@ export class FixyCommandRunner {
       });
     });
 
-    // Wait for all adapters to complete, printing results as they arrive
-    const allDone = Promise.all(promises);
+    // Start spinner showing all agents are working
+    startWaitingSpinner();
+
+    // Wait for adapters to complete, printing results progressively
     let printed = 0;
 
     while (printed < adapters.length) {
-      // Wait for at least one new result
       if (completedResults.length <= printed) {
         await new Promise<void>((resolve) => {
           pendingResolve = resolve;
         });
       }
 
-      // Print all newly completed results
+      // Stop spinner before printing results
+      stopWaitingSpinner();
+
       while (printed < completedResults.length) {
         const r = completedResults[printed];
         if (!r) break;
 
-        if (r.adapterId === liveAgentId) {
-          // This agent was streaming live — just add a newline
+        if (r.timedOut) {
+          ctx.onLog('stdout', `\n\x1b[2;33m@${r.adapterId} timed out (${AGENT_TIMEOUT_MS / 1000}s) — skipped${RESET}\n`);
+        } else if (r.adapterId === liveAgentId) {
           ctx.onLog('stdout', '\n');
         } else {
-          // This agent was buffered — print label + full output now
           ctx.onLog('stdout', `\n${agentLabel(r.adapterId)}\n`);
           if (r.output) ctx.onLog('stdout', r.output);
           ctx.onLog('stdout', '\n');
         }
 
-        ctx.thread.agentSessions[r.adapterId] = r.session;
+        if (!r.timedOut) {
+          ctx.thread.agentSessions[r.adapterId] = r.session;
+        }
         await this._appendAgentMessage(r.adapterId, r.summary, r.runId, r.patches, r.warnings, ctx);
         printed++;
       }
+
+      // If more agents still pending, restart the waiting spinner
+      if (printed < adapters.length) {
+        startWaitingSpinner();
+      }
     }
 
-    await allDone;
+    stopWaitingSpinner();
+    await Promise.all(promises);
   }
 
   private async _executeAdapterBuffered(
