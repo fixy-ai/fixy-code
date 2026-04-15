@@ -1643,7 +1643,7 @@ export class FixyCommandRunner {
             ctx.onLog('stdout', `\n${agentLabel(adapter.id)}\n`);
             headerPrinted = true;
           }
-          ctx.onLog('stdout', chunk);
+          ctx.onLog(_stream, chunk);
         } else {
           outputBuffer.push(chunk);
         }
@@ -1739,6 +1739,13 @@ export class FixyCommandRunner {
         }
         await this._appendAgentMessage(r.adapterId, r.summary, r.runId, r.patches, r.warnings, ctx);
         printed++;
+
+        // Show which agents are still pending after each printed result
+        const remaining = adapters.filter((a) => !completedSet.has(a.id));
+        if (remaining.length > 0) {
+          const names = remaining.map((a) => `@${a.id}`).join(', ');
+          ctx.onLog('stdout', `\x1b[2m  ↳ ${names} still thinking...${RESET}\n`);
+        }
       }
 
       // If more agents still pending, restart the waiting spinner
