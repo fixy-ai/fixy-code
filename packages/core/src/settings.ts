@@ -21,6 +21,7 @@ export interface FixySettings {
   codexEffort: string;
   geminiModel: string;
   agentTimeout: number;
+  showThinking: boolean;
   disabledAdapters: string[];
 }
 
@@ -42,6 +43,7 @@ export const defaultSettings: FixySettings = {
   codexEffort: '',
   geminiModel: '',
   agentTimeout: 120,
+  showThinking: true,
   disabledAdapters: [],
 };
 

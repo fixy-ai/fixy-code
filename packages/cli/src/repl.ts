@@ -7,7 +7,7 @@ import type {
   TurnResult,
   WorktreeManager,
 } from '@fixy/core';
-import { loadSettings, loadAuth, heartbeat } from '@fixy/core';
+import { loadSettings, loadAuth, heartbeat, toggleThinking, isThinkingVisible, initThinkingFlag } from '@fixy/core';
 import { PROMPT, createSpinner } from './format.js';
 
 // ── ANSI color constants for output styling ──
@@ -150,6 +150,7 @@ export async function startRepl(params: ReplParams): Promise<void> {
   };
 
   const settings = await loadSettings();
+  initThinkingFlag(settings.showThinking ?? true);
   const disabledAdapters = new Set(settings.disabledAdapters ?? []);
   const enabledAdapters = registry.list().filter((a) => !disabledAdapters.has(a.id));
 
@@ -323,6 +324,14 @@ export async function startRepl(params: ReplParams): Promise<void> {
           eraseMenu();
           process.stdout.write('\r\x1b[2K');
         }
+        return;
+      }
+
+      // Ctrl+T → toggle thinking visibility
+      if (key?.name === 't' && key.ctrl) {
+        const newState = toggleThinking();
+        const label = newState ? 'on' : 'off';
+        process.stdout.write(`\r\x1b[2K  \x1b[2mThinking display: ${label}${OUT_RESET}\n`);
         return;
       }
 

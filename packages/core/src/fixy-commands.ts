@@ -53,12 +53,32 @@ function toolAction(name: string, file?: string): string {
   return file ? `${action} ${file}` : action;
 }
 
+/** Mutable runtime toggle for thinking visibility (persisted via settings) */
+let showThinkingFlag = true;
+
+/** Toggle thinking visibility at runtime. Returns the new state. */
+export function toggleThinking(): boolean {
+  showThinkingFlag = !showThinkingFlag;
+  return showThinkingFlag;
+}
+
+/** Get current thinking visibility state */
+export function isThinkingVisible(): boolean {
+  return showThinkingFlag;
+}
+
+/** Initialize thinking flag from settings */
+export function initThinkingFlag(show: boolean): void {
+  showThinkingFlag = show;
+}
+
 /** Render an AdapterEvent as a dim activity line */
 function renderEvent(
   event: AdapterEvent,
   log: (stream: 'stdout' | 'stderr', chunk: string) => void,
 ): void {
   if (event.type === 'thinking') {
+    if (!showThinkingFlag) return;
     // Show first line of thinking, truncated
     const firstLine = event.text.split('\n')[0] ?? '';
     const truncated = firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
@@ -2164,6 +2184,7 @@ export class FixyCommandRunner {
       `  ${I}Esc${R}           ${D}Cancel current turn${R}`,
       `  ${I}Up / Down${R}     ${D}Navigate autocomplete menu${R}`,
       `  ${I}Tab${R}           ${D}Accept autocomplete selection${R}`,
+      `  ${I}Ctrl+T${R}        ${D}Toggle thinking display on/off${R}`,
       `  ${I}Ctrl+C${R}        ${D}Cancel turn or exit${R}`,
       '',
       `${B}File References${R}`,
