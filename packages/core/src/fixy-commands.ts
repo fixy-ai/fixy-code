@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { rename, writeFile } from 'node:fs/promises';
 
-import type { FixyExecutionContext, FixyExecutionResult } from './adapter.js';
+import type { AdapterEvent, FixyExecutionContext, FixyExecutionResult } from './adapter.js';
 import type { AdapterRegistry } from './registry.js';
 import { detectDisagreement } from './disagreement.js';
 import type { DisagreementResult } from './disagreement.js';
@@ -34,6 +34,42 @@ const PH = '\x1b[2;36m'; // dim cyan for phase headers
 function phaseHeader(text: string): string {
   const capitalized = text.charAt(0).toUpperCase() + text.slice(1);
   return `${PH}Fixy · ${capitalized}${RESET}`;
+}
+
+/** Dim styling for activity events */
+const DIM = '\x1b[2m';
+
+/** Map tool names to human-readable action labels */
+function toolAction(name: string, file?: string): string {
+  const n = name.toLowerCase();
+  let action: string;
+  if (n === 'read' || n === 'view') action = 'Reading';
+  else if (n === 'edit' || n === 'update') action = 'Editing';
+  else if (n === 'write' || n === 'create') action = 'Creating';
+  else if (n === 'bash' || n === 'shell') action = 'Running';
+  else if (n === 'grep' || n === 'search') action = 'Searching';
+  else if (n === 'glob') action = 'Finding files';
+  else action = name;
+  return file ? `${action} ${file}` : action;
+}
+
+/** Render an AdapterEvent as a dim activity line */
+function renderEvent(
+  event: AdapterEvent,
+  log: (stream: 'stdout' | 'stderr', chunk: string) => void,
+): void {
+  if (event.type === 'thinking') {
+    // Show first line of thinking, truncated
+    const firstLine = event.text.split('\n')[0] ?? '';
+    const truncated = firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
+    if (truncated.length > 0) {
+      log('stdout', `  ${DIM}· ${truncated}${RESET}\n`);
+    }
+  } else if (event.type === 'tool_start') {
+    const label = toolAction(event.name, event.file);
+    log('stdout', `  ${DIM}· ${label}${RESET}\n`);
+  }
+  // tool_end and content events are not rendered (content is already streamed via onLog)
 }
 
 export interface FixyCommandContext {
@@ -280,6 +316,7 @@ export class FixyCommandRunner {
         session: ctx.thread.agentSessions[adapter.id] ?? null,
         adapterArgs: ctx.thread.adapterArgs,
         onLog: ctx.onLog,
+        onEvent: (event) => renderEvent(event, ctx.onLog),
         onMeta: () => {},
         onSpawn: () => {},
         signal: ctx.signal,
@@ -1671,6 +1708,12 @@ export class FixyCommandRunner {
         session: ctx.thread.agentSessions[adapter.id] ?? null,
         adapterArgs: ctx.thread.adapterArgs,
         onLog,
+        onEvent: (event) => {
+          // Only render events for the live streaming agent
+          if (liveAgentId === adapter.id) {
+            renderEvent(event, ctx.onLog);
+          }
+        },
         onMeta: () => {},
         onSpawn: () => {},
         signal: ctx.signal,
@@ -1887,6 +1930,7 @@ export class FixyCommandRunner {
       session: thread.agentSessions[thread.workerModel] ?? null,
       adapterArgs: thread.adapterArgs,
       onLog: ctx.onLog,
+      onEvent: (event) => renderEvent(event, ctx.onLog),
       onMeta: () => {},
       onSpawn: () => {},
       signal: ctx.signal,
