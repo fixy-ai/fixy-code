@@ -256,7 +256,28 @@ class ClaudeAdapter implements FixyAdapter {
                   if (text.length > 0) {
                     ctx.onEvent?.({ type: 'thinking', text });
                   }
+                } else if (b['type'] === 'tool_use') {
+                  const toolName = (b['name'] ?? 'unknown') as string;
+                  const toolId = (b['id'] ?? '') as string;
+                  const input = b['input'] as Record<string, unknown> | undefined;
+                  const filePath = (input?.['file_path'] ?? input?.['path'] ?? input?.['command']) as string | undefined;
+                  toolNames.set(toolId, toolName);
+                  ctx.onEvent?.({ type: 'tool_start', name: toolName, file: filePath, description: filePath });
                 }
+              }
+            }
+          }
+        } else if (type === 'user') {
+          // Tool result — match by tool_use_id
+          const msg = obj['message'] as Record<string, unknown> | undefined;
+          const content = msg?.['content'];
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              const b = block as Record<string, unknown>;
+              if (b['type'] === 'tool_result') {
+                const toolId = (b['tool_use_id'] ?? '') as string;
+                const toolName = toolNames.get(toolId) ?? 'unknown';
+                ctx.onEvent?.({ type: 'tool_end', name: toolName, status: 'success' });
               }
             }
           }
