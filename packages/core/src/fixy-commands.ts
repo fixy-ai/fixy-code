@@ -1737,8 +1737,8 @@ export class FixyCommandRunner {
         adapterArgs: ctx.thread.adapterArgs,
         onLog,
         onEvent: (event) => {
-          // Only render events for the live streaming agent
-          if (liveAgentId === adapter.id) {
+          // Only render events for the live agent AND only when spinner is not running
+          if (liveAgentId === adapter.id && waitingSpinnerInterval === null) {
             renderEvent(event, ctx.onLog);
           }
         },
