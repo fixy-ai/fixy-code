@@ -1710,7 +1710,8 @@ export class FixyCommandRunner {
           stopWaitingSpinner();
         }
 
-        if (liveAgentId === adapter.id) {
+        if (liveAgentId === adapter.id && waitingSpinnerInterval === null) {
+          // Live agent streams directly — but only when spinner is NOT running
           if (!headerPrinted) {
             ctx.onLog('stdout', `\n${agentLabel(adapter.id)}\n`);
             headerPrinted = true;
@@ -1837,6 +1838,8 @@ export class FixyCommandRunner {
         if (r.timedOut) {
           ctx.onLog('stdout', `\n\x1b[2;33m@${r.adapterId} timed out (${AGENT_TIMEOUT_MS / 1000}s) — will print when ready${RESET}\n`);
         } else if (r.adapterId === liveAgentId) {
+          // Print any output that accumulated while spinner was running
+          if (r.output) ctx.onLog('stdout', r.output);
           ctx.onLog('stdout', '\n');
         } else {
           ctx.onLog('stdout', `\n${agentLabel(r.adapterId)}\n`);
