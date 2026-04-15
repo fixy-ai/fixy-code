@@ -228,16 +228,21 @@ export class FixyCommandRunner {
     const intent = forceFullPipeline ? 'task' as const : detectIntent(prompt);
 
     if (intent === 'question') {
-      // Questions only need discussion, not the full pipeline
+      // Questions only need discussion — call all agents IN PARALLEL
       if (soloMode) {
-        // Solo mode: just send to the worker directly
-        log(`\n${agentLabel(workerAdapter.id)}\n`);
         await this._callAdapterForAll(workerAdapter, prompt, ctx);
       } else {
-        // Multi-adapter: broadcast to all agents for discussion
-        for (const adapter of allAdapters) {
-          log(`\n${agentLabel(adapter.id)}\n`);
-          await this._callAdapterForAll(adapter, prompt, ctx);
+        // Fire all agents simultaneously — execute in parallel, append messages sequentially
+        const results = await Promise.all(
+          allAdapters.map((adapter) => this._executeAdapterBuffered(adapter, prompt, ctx)),
+        );
+        // Print and save results sequentially (avoids file write race conditions)
+        for (const r of results) {
+          ctx.onLog('stdout', `\n${agentLabel(r.adapterId)}\n`);
+          if (r.output) ctx.onLog('stdout', r.output);
+          ctx.onLog('stdout', '\n');
+          ctx.thread.agentSessions[r.adapterId] = r.session;
+          await this._appendAgentMessage(r.adapterId, r.summary, r.runId, r.patches, r.warnings, ctx);
         }
       }
       log(`\n${phaseHeader('complete')}\n`);
@@ -246,14 +251,19 @@ export class FixyCommandRunner {
     }
 
     if (intent === 'ambiguous') {
-      // Ambiguous: run discussion only, then hint about /all!
+      // Ambiguous: discussion only — call all agents IN PARALLEL
       if (soloMode) {
-        log(`\n${agentLabel(workerAdapter.id)}\n`);
         await this._callAdapterForAll(workerAdapter, prompt, ctx);
       } else {
-        for (const adapter of allAdapters) {
-          log(`\n${agentLabel(adapter.id)}\n`);
-          await this._callAdapterForAll(adapter, prompt, ctx);
+        const results = await Promise.all(
+          allAdapters.map((adapter) => this._executeAdapterBuffered(adapter, prompt, ctx)),
+        );
+        for (const r of results) {
+          ctx.onLog('stdout', `\n${agentLabel(r.adapterId)}\n`);
+          if (r.output) ctx.onLog('stdout', r.output);
+          ctx.onLog('stdout', '\n');
+          ctx.thread.agentSessions[r.adapterId] = r.session;
+          await this._appendAgentMessage(r.adapterId, r.summary, r.runId, r.patches, r.warnings, ctx);
         }
       }
       log(`\n${phaseHeader('complete')}\n`);
@@ -1520,40 +1530,12 @@ export class FixyCommandRunner {
   ): Promise<void> {
     const runId = randomUUID();
 
-    // Show animated spinner while waiting for adapter response
-    const isTTY = process.stdout?.isTTY ?? false;
-    let spinnerCleared = false;
-    let spinnerInterval: ReturnType<typeof setInterval> | null = null;
-    const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-    let spinnerIdx = 0;
-    let spinnerStart = 0;
-    const agentSpinColor = AGENT_COLORS[adapter.id] ?? '\x1b[38;5;105m';
+    // Buffer output — when called in parallel, prevents interleaved output
+    // Label + full response printed together after adapter completes
+    const outputBuffer: string[] = [];
 
-    if (isTTY) {
-      spinnerStart = Date.now();
-      spinnerInterval = setInterval(() => {
-        const frame = spinnerFrames[spinnerIdx % spinnerFrames.length] ?? '⠋';
-        const elapsed = Math.floor((Date.now() - spinnerStart) / 1000);
-        const timer = elapsed > 0 ? ` \x1b[2m(${elapsed}s · ESC to cancel)${RESET}` : '';
-        process.stdout.write(`\r\x1b[2K  ${agentSpinColor}${frame}${RESET} \x1b[2mthinking...${RESET}${timer}`);
-        spinnerIdx++;
-      }, 100);
-    }
-
-    const stopSpinner = (): void => {
-      if (!spinnerCleared) {
-        if (spinnerInterval !== null) {
-          clearInterval(spinnerInterval);
-          spinnerInterval = null;
-        }
-        if (isTTY) process.stdout.write('\r\x1b[2K');
-        spinnerCleared = true;
-      }
-    };
-
-    const wrappedOnLog = (stream: 'stdout' | 'stderr', chunk: string): void => {
-      stopSpinner();
-      ctx.onLog(stream, chunk);
+    const bufferedOnLog = (_stream: 'stdout' | 'stderr', chunk: string): void => {
+      outputBuffer.push(chunk);
     };
 
     const execCtx: FixyExecutionContext = {
@@ -1569,15 +1551,19 @@ export class FixyCommandRunner {
       prompt,
       session: ctx.thread.agentSessions[adapter.id] ?? null,
       adapterArgs: ctx.thread.adapterArgs,
-      onLog: wrappedOnLog,
+      onLog: bufferedOnLog,
       onMeta: () => {},
       onSpawn: () => {},
       signal: ctx.signal,
     };
     const result = await adapter.execute(execCtx);
 
-    // Clear spinner if adapter returned with no streamed output
-    stopSpinner();
+    // Print agent label + buffered output all at once (no interleaving)
+    ctx.onLog('stdout', `\n${agentLabel(adapter.id)}\n`);
+    if (outputBuffer.length > 0) {
+      ctx.onLog('stdout', outputBuffer.join(''));
+    }
+    ctx.onLog('stdout', '\n');
     ctx.thread.agentSessions[adapter.id] = result.session;
     const agentMsg: FixyMessage = {
       id: randomUUID(),
@@ -1589,6 +1575,72 @@ export class FixyCommandRunner {
       dispatchedTo: [],
       patches: result.patches,
       warnings: result.warnings,
+    };
+    await ctx.store.appendMessage(ctx.thread.id, ctx.thread.projectRoot, agentMsg);
+  }
+
+  private async _executeAdapterBuffered(
+    adapter: {
+      id: string;
+      name: string;
+      execute: (ctx: FixyExecutionContext) => Promise<FixyExecutionResult>;
+    },
+    prompt: string,
+    ctx: FixyCommandContext,
+  ): Promise<{ adapterId: string; output: string; summary: string; session: FixyExecutionResult['session']; runId: string; patches: FixyExecutionResult['patches']; warnings: FixyExecutionResult['warnings'] }> {
+    const runId = randomUUID();
+    const outputBuffer: string[] = [];
+
+    const execCtx: FixyExecutionContext = {
+      runId,
+      agent: { id: adapter.id, name: adapter.name },
+      threadContext: {
+        threadId: ctx.thread.id,
+        projectRoot: ctx.thread.projectRoot,
+        worktreePath: ctx.thread.projectRoot,
+        repoRef: null,
+      },
+      messages: ctx.thread.messages,
+      prompt,
+      session: ctx.thread.agentSessions[adapter.id] ?? null,
+      adapterArgs: ctx.thread.adapterArgs,
+      onLog: (_stream: 'stdout' | 'stderr', chunk: string) => {
+        outputBuffer.push(chunk);
+      },
+      onMeta: () => {},
+      onSpawn: () => {},
+      signal: ctx.signal,
+    };
+    const result = await adapter.execute(execCtx);
+    return {
+      adapterId: adapter.id,
+      output: outputBuffer.join(''),
+      summary: result.summary,
+      session: result.session,
+      runId,
+      patches: result.patches,
+      warnings: result.warnings,
+    };
+  }
+
+  private async _appendAgentMessage(
+    agentId: string,
+    summary: string,
+    runId: string,
+    patches: FixyExecutionResult['patches'],
+    warnings: FixyExecutionResult['warnings'],
+    ctx: FixyCommandContext,
+  ): Promise<void> {
+    const agentMsg: FixyMessage = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      role: 'agent',
+      agentId,
+      content: summary,
+      runId,
+      dispatchedTo: [],
+      patches,
+      warnings,
     };
     await ctx.store.appendMessage(ctx.thread.id, ctx.thread.projectRoot, agentMsg);
   }
