@@ -1839,7 +1839,10 @@ export class FixyCommandRunner {
           ctx.onLog('stdout', `\n\x1b[2;33m@${r.adapterId} timed out (${AGENT_TIMEOUT_MS / 1000}s) — will print when ready${RESET}\n`);
         } else if (r.adapterId === liveAgentId) {
           // Print any output that accumulated while spinner was running
-          if (r.output) ctx.onLog('stdout', r.output);
+          if (r.output) {
+            ctx.onLog('stdout', `\n${agentLabel(r.adapterId)}\n`);
+            ctx.onLog('stdout', r.output);
+          }
           ctx.onLog('stdout', '\n');
         } else {
           ctx.onLog('stdout', `\n${agentLabel(r.adapterId)}\n`);
