@@ -9,7 +9,7 @@ import type { FixyMessage, FixyThread } from './thread.js';
 import type { AdapterRegistry } from './registry.js';
 import { Router } from './router.js';
 import type { LocalThreadStore } from './store.js';
-import { FixyCommandRunner } from './fixy-commands.js';
+import { FixyCommandRunner, renderEvent } from './fixy-commands.js';
 import { WorktreeManager } from './worktree.js';
 
 export interface TurnResult {
@@ -189,6 +189,7 @@ export class TurnController {
       session: freshThread.agentSessions[agentId] ?? null,
       adapterArgs: freshThread.adapterArgs,
       onLog: (stream, chunk) => params.onLog(stream, chunk, agentId),
+      onEvent: (event) => renderEvent(event, (stream, chunk) => params.onLog(stream, chunk, agentId)),
       onMeta: () => {},
       onSpawn: () => {},
       signal: params.signal,

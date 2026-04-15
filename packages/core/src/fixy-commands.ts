@@ -73,7 +73,7 @@ export function initThinkingFlag(show: boolean): void {
 }
 
 /** Render an AdapterEvent as a dim activity line */
-function renderEvent(
+export function renderEvent(
   event: AdapterEvent,
   log: (stream: 'stdout' | 'stderr', chunk: string) => void,
 ): void {
