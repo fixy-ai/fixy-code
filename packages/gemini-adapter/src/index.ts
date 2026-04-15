@@ -90,13 +90,16 @@ function extractCleanError(text: string): string | null {
 }
 
 function filterGeminiNoise(text: string): string {
+  // Preserve trailing newline so streaming chunks don't merge words
+  const hadTrailingNewline = text.endsWith('\n');
+
   // First check if this is a verbose error — extract clean message
   if (text.includes('_GaxiosError') || text.includes('"error"')) {
     const clean = extractCleanError(text);
-    if (clean) return clean;
+    if (clean) return clean + (hadTrailingNewline ? '\n' : '');
   }
 
-  return text
+  const filtered = text
     .split('\n')
     .filter((line) => {
       const trimmed = line.trim();
@@ -105,6 +108,9 @@ function filterGeminiNoise(text: string): string {
     })
     .join('\n')
     .trim();
+
+  if (filtered.length === 0) return '';
+  return hadTrailingNewline ? filtered + '\n' : filtered;
 }
 
 class GeminiAdapter implements FixyAdapter {
