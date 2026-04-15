@@ -30,6 +30,29 @@ You type a task. Fixy routes it to the agents you choose. They discuss, plan, an
 
 Fixy Code never stores your code, your prompts, or your credentials. Everything runs locally.
 
+### Real-time thinking & activity
+
+See what agents are doing as they work — not just the final answer:
+
+```
+@claude:
+  · Analyzing the authentication flow for security issues...
+  · Reading src/auth.ts
+  · Reading src/middleware.ts
+  
+  I found 3 issues in your auth implementation...
+```
+
+Thinking and tool activity (file reads, edits, shell commands) appear as dim activity lines in real-time. Toggle with `Ctrl+T`.
+
+### Smart question detection
+
+`/all` automatically detects whether your input is a question or a task:
+
+- **Questions** (`@fixy /all should we use Redis?`) — agents discuss in parallel, skip the execution pipeline
+- **Tasks** (`@fixy /all build a REST API`) — full plan/execute/review pipeline
+- **Force execute** (`@fixy /all! improve error handling`) — always runs full pipeline
+
 ---
 
 ## No login required
@@ -134,7 +157,8 @@ Run shell commands directly with `!`:
 ### Collaboration
 
 ```
-/all <task>               — all agents collaborate (discuss, plan, execute, review)
+/all <task>               — all agents collaborate (auto-detects question vs task)
+/all! <task>              — force full pipeline (skip question detection)
 /agents                   — list agents, enable/disable for @all
 /agents enable <name>     — include agent in @all
 /agents disable <name>    — exclude agent from @all
@@ -209,6 +233,7 @@ Enter                     — submit message
 Alt+Enter                 — new line (multi-line input)
 \ at end of line          — continue on next line
 ESC                       — cancel running turn or clear input
+Ctrl+T                    — toggle thinking display on/off
 Ctrl-C                    — cancel turn; press again to exit
 /                         — show command menu (with arrow navigation)
 @                         — show agent menu
@@ -269,6 +294,8 @@ Settings are stored in `~/.fixy/settings.json`. You can edit this file directly 
 | `claudeArgs` | `""` | Extra CLI flags passed to Claude on every call |
 | `codexArgs` | `""` | Extra CLI flags passed to Codex on every call |
 | `geminiArgs` | `""` | Extra CLI flags passed to Gemini on every call |
+| `agentTimeout` | `120` | Per-agent timeout in seconds for @all parallel execution |
+| `showThinking` | `true` | Show real-time thinking and tool activity lines |
 | `disabledAdapters` | `[]` | Agents excluded from @all broadcasts |
 
 ### Per-conversation overrides
