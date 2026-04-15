@@ -1520,19 +1520,39 @@ export class FixyCommandRunner {
   ): Promise<void> {
     const runId = randomUUID();
 
-    // Show a thinking indicator that clears on first real adapter output
+    // Show animated spinner while waiting for adapter response
     const isTTY = process.stdout?.isTTY ?? false;
-    let thinkingCleared = false;
+    let spinnerCleared = false;
+    let spinnerInterval: ReturnType<typeof setInterval> | null = null;
+    const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let spinnerIdx = 0;
+    let spinnerStart = 0;
+    const agentSpinColor = AGENT_COLORS[adapter.id] ?? '\x1b[38;5;105m';
 
     if (isTTY) {
-      process.stdout.write(`\x1b[2m  thinking...${RESET}`);
+      spinnerStart = Date.now();
+      spinnerInterval = setInterval(() => {
+        const frame = spinnerFrames[spinnerIdx % spinnerFrames.length] ?? '⠋';
+        const elapsed = Math.floor((Date.now() - spinnerStart) / 1000);
+        const timer = elapsed > 0 ? ` \x1b[2m(${elapsed}s · ESC to cancel)${RESET}` : '';
+        process.stdout.write(`\r\x1b[2K  ${agentSpinColor}${frame}${RESET} \x1b[2mthinking...${RESET}${timer}`);
+        spinnerIdx++;
+      }, 100);
     }
 
-    const wrappedOnLog = (stream: 'stdout' | 'stderr', chunk: string): void => {
-      if (!thinkingCleared && isTTY) {
-        process.stdout.write('\r\x1b[2K');
-        thinkingCleared = true;
+    const stopSpinner = (): void => {
+      if (!spinnerCleared) {
+        if (spinnerInterval !== null) {
+          clearInterval(spinnerInterval);
+          spinnerInterval = null;
+        }
+        if (isTTY) process.stdout.write('\r\x1b[2K');
+        spinnerCleared = true;
       }
+    };
+
+    const wrappedOnLog = (stream: 'stdout' | 'stderr', chunk: string): void => {
+      stopSpinner();
       ctx.onLog(stream, chunk);
     };
 
@@ -1556,10 +1576,8 @@ export class FixyCommandRunner {
     };
     const result = await adapter.execute(execCtx);
 
-    // Clear thinking if adapter returned with no streamed output
-    if (!thinkingCleared && isTTY) {
-      process.stdout.write('\r\x1b[2K');
-    }
+    // Clear spinner if adapter returned with no streamed output
+    stopSpinner();
     ctx.thread.agentSessions[adapter.id] = result.session;
     const agentMsg: FixyMessage = {
       id: randomUUID(),
