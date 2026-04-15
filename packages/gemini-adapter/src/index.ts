@@ -28,12 +28,81 @@ const GEMINI_NOISE_PATTERNS = [
   'Skill "',
   'is overriding the built-in skill',
   'warning: Skill ',
+  '_GaxiosError',
+  'at Gaxios',
+  'at async ',
+  'at process.',
+  'at Object.',
+  'at Function.',
+  'config: {',
+  'response: {',
+  'headers: {',
+  'params: {',
+  'body: \'<<REDACTED',
+  'signal: AbortSignal',
+  'signal: [AbortSignal',
+  'retry: false',
+  'paramsSerializer:',
+  'validateStatus:',
+  'errorRedactor:',
+  'responseURL:',
+  'statusText:',
+  'responseType:',
+  '[Symbol(',
+  'error: undefined',
+  'x-cloudaicompanion',
+  'x-content-type',
+  'x-frame-options',
+  'x-xss-protection',
+  'alt-svc:',
+  'content-length:',
+  'content-type:',
+  'server-timing:',
+  'server:',
+  'vary:',
+  'date:',
+  'Authorization:',
+  'User-Agent:',
+  'x-goog-api-client',
+  'url:',
+  'method:',
+  'data:',
+  'status:',
 ];
 
+// Extract a clean error message from Gemini's verbose error output
+const GEMINI_ERROR_RE = /(?:"message":\s*"([^"]+)"|"reason":\s*"([^"]+)")/g;
+const GEMINI_HTTP_STATUS_RE = /\b(429|500|503|401|403)\b/;
+
+function extractCleanError(text: string): string | null {
+  const statusMatch = GEMINI_HTTP_STATUS_RE.exec(text);
+  const messages: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = GEMINI_ERROR_RE.exec(text)) !== null) {
+    const msg = match[1] ?? match[2];
+    if (msg && !messages.includes(msg)) messages.push(msg);
+  }
+  if (messages.length > 0) {
+    const status = statusMatch ? ` (${statusMatch[1]})` : '';
+    return `error${status}: ${messages[0]}`;
+  }
+  return null;
+}
+
 function filterGeminiNoise(text: string): string {
+  // First check if this is a verbose error — extract clean message
+  if (text.includes('_GaxiosError') || text.includes('"error"')) {
+    const clean = extractCleanError(text);
+    if (clean) return clean;
+  }
+
   return text
     .split('\n')
-    .filter((line) => !GEMINI_NOISE_PATTERNS.some((p) => line.includes(p)))
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) return false;
+      return !GEMINI_NOISE_PATTERNS.some((p) => trimmed.includes(p));
+    })
     .join('\n')
     .trim();
 }

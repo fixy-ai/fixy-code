@@ -631,7 +631,7 @@ describe('FixyCommandRunner', () => {
 
     const fresh = await store.getThread(thread.id, thread.projectRoot);
     const completionMsg = fresh.messages.find(
-      (m) => m.role === 'system' && m.content.includes('question answered'),
+      (m) => m.role === 'system' && m.content.includes('Question answered'),
     );
     expect(completionMsg).toBeDefined();
   });

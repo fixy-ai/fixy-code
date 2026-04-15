@@ -227,6 +227,8 @@ export class FixyCommandRunner {
     // ── INTENT DETECTION ──
     const intent = forceFullPipeline ? 'task' as const : detectIntent(prompt);
 
+    const FIXY_CLR = '\x1b[38;5;105m';
+
     if (intent === 'question') {
       // Questions only need discussion — parallel with progressive reveal
       if (soloMode) {
@@ -234,8 +236,8 @@ export class FixyCommandRunner {
       } else {
         await this._runParallelProgressiveReveal(allAdapters, prompt, ctx);
       }
-      log(`\n${phaseHeader('complete')}\n`);
-      await this._appendSystemMessage('question answered', ctx);
+      log(`\n${FIXY_CLR}Fixy · Complete${RESET}\n`);
+      await this._appendSystemMessage('Question answered', ctx);
       return;
     }
 
@@ -246,9 +248,9 @@ export class FixyCommandRunner {
       } else {
         await this._runParallelProgressiveReveal(allAdapters, prompt, ctx);
       }
-      log(`\n${phaseHeader('complete')}\n`);
-      log(`${PH}Fixy · To execute, run: /all! ${prompt}${RESET}\n`);
-      await this._appendSystemMessage('discussion only', ctx);
+      log(`\n${FIXY_CLR}Fixy · Complete${RESET}\n`);
+      log(`${FIXY_CLR}Fixy · To execute, run: /all! ${prompt}${RESET}\n`);
+      await this._appendSystemMessage('Discussion only', ctx);
       return;
     }
 
@@ -1725,17 +1727,30 @@ export class FixyCommandRunner {
       });
     });
 
+    // Listen for abort signal (ESC) to break out immediately
+    let aborted = false;
+    const onAbort = (): void => {
+      aborted = true;
+      stopWaitingSpinner();
+      if (pendingResolve) {
+        pendingResolve();
+        pendingResolve = null;
+      }
+    };
+    ctx.signal.addEventListener('abort', onAbort, { once: true });
+
     // Start spinner showing all agents are working
     startWaitingSpinner();
 
     // Wait for adapters to complete, printing results progressively
     let printed = 0;
 
-    while (printed < adapters.length) {
+    while (printed < adapters.length && !aborted) {
       if (completedResults.length <= printed) {
         await new Promise<void>((resolve) => {
           pendingResolve = resolve;
         });
+        if (aborted) break;
       }
 
       // Stop spinner before printing results
@@ -1769,14 +1784,18 @@ export class FixyCommandRunner {
         }
       }
 
-      // If more agents still pending, restart the waiting spinner
-      if (printed < adapters.length) {
+      // If more agents still pending and not cancelled, restart the waiting spinner
+      if (printed < adapters.length && !aborted) {
         startWaitingSpinner();
       }
     }
 
+    ctx.signal.removeEventListener('abort', onAbort);
     stopWaitingSpinner();
-    await Promise.all(promises);
+    // Don't await Promise.all if aborted — let remaining agents die with the signal
+    if (!aborted) {
+      await Promise.all(promises);
+    }
   }
 
   private async _executeAdapterBuffered(
