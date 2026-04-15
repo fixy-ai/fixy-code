@@ -72,3 +72,12 @@ export {
   fetchProviderModels,
 } from './api.js';
 export type { CodeProfile, CodeSession, CodePlan, ProviderModels } from './api.js';
+
+export type { IssueSeverity, CodeIssue, ReviewResult } from './review.js';
+export {
+  collectGitDiff,
+  buildReviewPrompt,
+  parseReviewResponse,
+  isBlocking,
+  deduplicateIssues,
+} from './review.js';
