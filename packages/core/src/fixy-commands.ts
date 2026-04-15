@@ -1854,7 +1854,7 @@ export class FixyCommandRunner {
         const remaining = adapters.filter((a) => !completedSet.has(a.id));
         if (remaining.length > 0) {
           const names = remaining.map((a) => `@${a.id}`).join(', ');
-          ctx.onLog('stdout', `\x1b[2m  ↳ ${names} still thinking...${RESET}\n`);
+          ctx.onLog('stdout', `\x1b[2m  ↳ ${names} still thinking...${RESET}\n\n`);
         }
       }
 
