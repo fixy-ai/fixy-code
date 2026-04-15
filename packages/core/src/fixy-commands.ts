@@ -1519,6 +1519,23 @@ export class FixyCommandRunner {
     ctx: FixyCommandContext,
   ): Promise<void> {
     const runId = randomUUID();
+
+    // Show a thinking indicator that clears on first real adapter output
+    const isTTY = process.stdout?.isTTY ?? false;
+    let thinkingCleared = false;
+
+    if (isTTY) {
+      process.stdout.write(`\x1b[2m  thinking...${RESET}`);
+    }
+
+    const wrappedOnLog = (stream: 'stdout' | 'stderr', chunk: string): void => {
+      if (!thinkingCleared && isTTY) {
+        process.stdout.write('\r\x1b[2K');
+        thinkingCleared = true;
+      }
+      ctx.onLog(stream, chunk);
+    };
+
     const execCtx: FixyExecutionContext = {
       runId,
       agent: { id: adapter.id, name: adapter.name },
@@ -1532,12 +1549,17 @@ export class FixyCommandRunner {
       prompt,
       session: ctx.thread.agentSessions[adapter.id] ?? null,
       adapterArgs: ctx.thread.adapterArgs,
-      onLog: ctx.onLog,
+      onLog: wrappedOnLog,
       onMeta: () => {},
       onSpawn: () => {},
       signal: ctx.signal,
     };
     const result = await adapter.execute(execCtx);
+
+    // Clear thinking if adapter returned with no streamed output
+    if (!thinkingCleared && isTTY) {
+      process.stdout.write('\r\x1b[2K');
+    }
     ctx.thread.agentSessions[adapter.id] = result.session;
     const agentMsg: FixyMessage = {
       id: randomUUID(),
