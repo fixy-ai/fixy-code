@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type {
+  AdapterEvent,
   FixyAdapter,
   FixyModelInfo,
   FixyProbeResult,
@@ -229,15 +230,58 @@ class CodexAdapter implements FixyAdapter {
 
     const forwardJsonLine = (line: string): void => {
       try {
-        const obj = JSON.parse(line);
-        if (typeof obj === 'object' && obj !== null && obj['type'] === 'item.completed') {
-          const item = obj['item'];
-          if (typeof item === 'object' && item !== null && item['type'] === 'agent_message') {
-            const rawText = item['text'];
-            if (typeof rawText === 'string' && rawText.length > 0) {
+        const obj = JSON.parse(line) as Record<string, unknown>;
+        const eventType = obj['type'] as string | undefined;
+        const item = obj['item'] as Record<string, unknown> | undefined;
+        const itemType = item?.['type'] as string | undefined;
+
+        if (eventType === 'item.started' && item) {
+          if (itemType === 'reasoning') {
+            const text = (item['text'] ?? '') as string;
+            if (text.length > 0) ctx.onEvent?.({ type: 'thinking', text });
+          } else if (itemType === 'command_execution') {
+            const cmd = (item['command'] ?? '') as string;
+            ctx.onEvent?.({ type: 'tool_start', name: 'Shell', description: cmd });
+          } else if (itemType === 'file_change') {
+            const changes = item['changes'] as Array<Record<string, unknown>> | undefined;
+            const firstPath = (changes?.[0]?.['path'] ?? '') as string;
+            const kind = (changes?.[0]?.['kind'] ?? 'update') as string;
+            ctx.onEvent?.({ type: 'tool_start', name: kind === 'add' ? 'Create' : 'Edit', file: firstPath });
+          } else if (itemType === 'mcp_tool_call') {
+            const tool = (item['tool'] ?? 'unknown') as string;
+            const args = item['arguments'] as Record<string, unknown> | undefined;
+            const filePath = (args?.['path'] ?? args?.['file_path']) as string | undefined;
+            ctx.onEvent?.({ type: 'tool_start', name: tool, file: filePath });
+          }
+        } else if (eventType === 'item.completed' && item) {
+          if (itemType === 'agent_message') {
+            const rawText = (item['text'] ?? '') as string;
+            if (rawText.length > 0) {
               const text = rawText.replace(CODEX_STDIN_WARNING, '').trimStart();
-              if (text.length > 0) ctx.onLog('stdout', text + '\n');
+              if (text.length > 0) {
+                ctx.onLog('stdout', text + '\n');
+                ctx.onEvent?.({ type: 'content', text });
+              }
             }
+          } else if (itemType === 'reasoning') {
+            const text = (item['text'] ?? '') as string;
+            if (text.length > 0) ctx.onEvent?.({ type: 'thinking', text });
+          } else if (itemType === 'command_execution') {
+            const status = (item['status'] ?? 'completed') as string;
+            ctx.onEvent?.({ type: 'tool_end', name: 'Shell', status: status === 'failed' ? 'error' : 'success' });
+          } else if (itemType === 'file_change') {
+            const status = (item['status'] ?? 'completed') as string;
+            ctx.onEvent?.({ type: 'tool_end', name: 'Edit', status: status === 'failed' ? 'error' : 'success' });
+          } else if (itemType === 'mcp_tool_call') {
+            const tool = (item['tool'] ?? 'unknown') as string;
+            const status = (item['status'] ?? 'completed') as string;
+            ctx.onEvent?.({ type: 'tool_end', name: tool, status: status === 'failed' ? 'error' : 'success' });
+          }
+        } else if (eventType === 'item.updated' && item) {
+          // Forward incremental reasoning updates
+          if (itemType === 'reasoning') {
+            const text = (item['text'] ?? '') as string;
+            if (text.length > 0) ctx.onEvent?.({ type: 'thinking', text });
           }
         }
       } catch {

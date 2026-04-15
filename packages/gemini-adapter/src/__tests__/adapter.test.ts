@@ -181,7 +181,7 @@ describe('GeminiAdapter.execute()', () => {
 
     // Base args first
     expect(capturedArgs[0]).toBe('--output-format');
-    expect(capturedArgs[1]).toBe('text');
+    expect(capturedArgs[1]).toBe('stream-json');
     // Extra args present
     expect(capturedArgs).toContain('-m');
     expect(capturedArgs).toContain('gemini-2.5-pro');

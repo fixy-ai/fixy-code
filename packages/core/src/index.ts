@@ -1,6 +1,7 @@
 export type { FixyRole, FixyThread, FixyMessage, FixyPatch } from './thread.js';
 
 export type {
+  AdapterEvent,
   FixyAgent,
   FixyThreadContext,
   FixyExecutionContext,

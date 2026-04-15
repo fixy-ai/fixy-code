@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  AdapterEvent,
   FixyAdapter,
   FixyModelInfo,
   FixyProbeResult,
@@ -20,7 +21,7 @@ import {
 
 import { loadSettings } from '@fixy/core';
 
-import { parseGeminiOutput, parseListSessions } from './parse.js';
+import { parseListSessions } from './parse.js';
 
 // Gemini CLI emits various noise on stderr/stdout — suppress it.
 const GEMINI_NOISE_PATTERNS = [
@@ -263,7 +264,7 @@ class GeminiAdapter implements FixyAdapter {
     const extraArgsStr = ctx.adapterArgs?.['gemini'] ?? settings.geminiArgs;
     const extraArgs = extraArgsStr.trim().length > 0 ? extraArgsStr.trim().split(/\s+/) : [];
 
-    const args: string[] = ['--output-format', 'text'];
+    const args: string[] = ['--output-format', 'stream-json'];
 
     if (ctx.session) {
       args.push('--resume', ctx.session.sessionId);
@@ -285,6 +286,63 @@ class GeminiAdapter implements FixyAdapter {
       env: redactEnvForLogs(env),
     });
 
+    // Buffer partial stdout lines for JSONL parsing
+    let stdoutLineBuffer = '';
+    const contentTexts: string[] = [];
+    let sessionId: string | null = null;
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
+    // Track tool_id → tool_name for correlating tool_result events
+    const toolNames = new Map<string, string>();
+
+    const forwardJsonLine = (line: string): void => {
+      try {
+        const obj = JSON.parse(line) as Record<string, unknown>;
+        const type = obj['type'] as string | undefined;
+
+        if (type === 'init') {
+          sessionId = (obj['session_id'] ?? null) as string | null;
+        } else if (type === 'message' && obj['role'] === 'assistant') {
+          const content = (obj['content'] ?? '') as string;
+          if (content.length > 0) {
+            ctx.onLog('stdout', content);
+            ctx.onEvent?.({ type: 'content', text: content });
+            contentTexts.push(content);
+          }
+        } else if (type === 'tool_use') {
+          const toolName = (obj['tool_name'] ?? 'unknown') as string;
+          const toolId = (obj['tool_id'] ?? '') as string;
+          const params = obj['parameters'] as Record<string, unknown> | undefined;
+          const filePath = (params?.['file_path'] ?? params?.['path'] ?? params?.['command']) as string | undefined;
+          toolNames.set(toolId, toolName);
+          ctx.onEvent?.({ type: 'tool_start', name: toolName, file: filePath, description: filePath });
+        } else if (type === 'tool_result') {
+          const toolId = (obj['tool_id'] ?? '') as string;
+          const status = obj['status'] === 'error' ? 'error' as const : 'success' as const;
+          const toolName = toolNames.get(toolId) ?? 'unknown';
+          ctx.onEvent?.({ type: 'tool_end', name: toolName, status });
+        } else if (type === 'result') {
+          const stats = obj['stats'] as Record<string, unknown> | undefined;
+          if (stats) {
+            if (typeof stats['input_tokens'] === 'number') inputTokens = stats['input_tokens'];
+            if (typeof stats['output_tokens'] === 'number') outputTokens = stats['output_tokens'];
+          }
+          const sid = (obj['session_id'] ?? null) as string | null;
+          if (sid) sessionId = sid;
+        } else if (type === 'error') {
+          const msg = (obj['message'] ?? '') as string;
+          if (msg.length > 0) ctx.onLog('stderr', msg + '\n');
+        }
+      } catch {
+        // Not valid JSON — filter noise and forward as plain text
+        const filtered = filterGeminiNoise(line);
+        if (filtered.length > 0) {
+          ctx.onLog('stdout', filtered + '\n');
+          contentTexts.push(filtered);
+        }
+      }
+    };
+
     const result = await runChildProcess({
       command: resolvedCommand,
       args,
@@ -297,30 +355,42 @@ class GeminiAdapter implements FixyAdapter {
           if (filtered.length > 0) ctx.onLog('stderr', filtered);
           return;
         }
-        // stdout: filter noise and forward plain text
-        const filtered = filterGeminiNoise(chunk);
-        if (filtered.length > 0) ctx.onLog('stdout', filtered);
+        // stdout: buffer and parse JSONL line-by-line
+        stdoutLineBuffer += chunk;
+        const lines = stdoutLineBuffer.split('\n');
+        stdoutLineBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.length > 0) forwardJsonLine(trimmed);
+        }
       },
       onSpawn: ctx.onSpawn,
     });
 
-    // Resolve the session index for the turn we just ran via --list-sessions.
-    // The first line of that output holds the most-recent session index.
-    let sessionIndex: string | null = null;
-    try {
-      const listResult = await runChildProcess({
-        command: resolvedCommand,
-        args: ['--list-sessions'],
-        cwd: process.cwd(),
-        env,
-        timeoutMs: 10_000,
-      });
-      sessionIndex = parseListSessions(listResult.stdout);
-    } catch {
-      // Best-effort — session resume not critical
+    // Flush remaining buffer
+    if (stdoutLineBuffer.trim().length > 0) {
+      forwardJsonLine(stdoutLineBuffer.trim());
     }
 
-    const parsed = parseGeminiOutput(result.stdout);
+    // Resolve the session index for the turn we just ran via --list-sessions.
+    // The first line of that output holds the most-recent session index.
+    let sessionIndex: string | null = sessionId;
+    if (!sessionIndex) {
+      try {
+        const listResult = await runChildProcess({
+          command: resolvedCommand,
+          args: ['--list-sessions'],
+          cwd: process.cwd(),
+          env,
+          timeoutMs: 10_000,
+        });
+        sessionIndex = parseListSessions(listResult.stdout);
+      } catch {
+        // Best-effort — session resume not critical
+      }
+    }
+
+    const summary = contentTexts.join('').trim();
 
     const warnings: string[] = [];
     const filteredStderr = filterGeminiNoise(result.stderr ?? '');
@@ -340,13 +410,13 @@ class GeminiAdapter implements FixyAdapter {
       exitCode: result.exitCode,
       signal: result.signal,
       timedOut: result.timedOut,
-      summary: parsed.summary,
+      summary,
       session: sessionIndex !== null ? { sessionId: sessionIndex, params: {} } : null,
       patches: [],
       warnings,
       errorMessage,
-      inputTokens: parsed.inputTokens,
-      outputTokens: parsed.outputTokens,
+      inputTokens,
+      outputTokens,
     };
   }
 }

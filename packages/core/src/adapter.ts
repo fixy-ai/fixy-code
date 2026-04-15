@@ -30,6 +30,8 @@ export interface FixyExecutionContext {
   adapterArgs?: Record<string, string>;
   /** Streamed stdout/stderr chunks. Adapters MUST call this. */
   onLog: (stream: 'stdout' | 'stderr', chunk: string, agentId?: string) => void;
+  /** Structured events (thinking, tool use, content) for real-time activity display. */
+  onEvent?: (event: AdapterEvent) => void;
   /** Called once with the resolved command + args + env for transcript/logging. */
   onMeta: (meta: FixyInvocationMeta) => void;
   /** Called with the child pid the moment the process spawns. */
@@ -70,6 +72,16 @@ export interface FixyInvocationMeta {
   cwd: string;
   env: Record<string, string>; // already redacted of secrets by the adapter
 }
+
+// ---------------------------------------------------------------------------
+// Structured adapter events — emitted during execution for real-time display
+// ---------------------------------------------------------------------------
+
+export type AdapterEvent =
+  | { type: 'thinking'; text: string }
+  | { type: 'tool_start'; name: string; file?: string; description?: string }
+  | { type: 'tool_end'; name: string; status: 'success' | 'error' }
+  | { type: 'content'; text: string };
 
 export interface FixyModelInfo {
   id: string;

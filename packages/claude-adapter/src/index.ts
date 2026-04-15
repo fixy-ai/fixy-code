@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {
+  AdapterEvent,
   FixyAdapter,
   FixyModelInfo,
   FixyProbeResult,
@@ -157,7 +158,7 @@ class ClaudeAdapter implements FixyAdapter {
   }
 
   async execute(ctx: FixyExecutionContext): Promise<FixyExecutionResult> {
-    const args: string[] = ['--print', '--output-format', 'text'];
+    const args: string[] = ['--print', '--output-format', 'stream-json'];
 
     if (ctx.session) {
       args.push('--resume', ctx.session.sessionId);
@@ -186,6 +187,89 @@ class ClaudeAdapter implements FixyAdapter {
       env: redactEnvForLogs(env),
     });
 
+    // Buffer partial stdout lines for JSONL parsing
+    let stdoutLineBuffer = '';
+    // Track tool_id → tool_name for correlating tool_result events
+    const toolNames = new Map<string, string>();
+
+    const forwardJsonLine = (line: string): void => {
+      try {
+        const obj = JSON.parse(line) as Record<string, unknown>;
+        const type = obj['type'] as string | undefined;
+
+        if (type === 'message' && obj['role'] === 'assistant') {
+          const content = typeof obj['content'] === 'string' ? obj['content'] : '';
+          if (content.length > 0) {
+            // Determine if this is thinking or content based on context
+            // stream-json emits thinking via a separate "thinking" subtype or content_block
+            const subtype = obj['subtype'] as string | undefined;
+            if (subtype === 'thinking') {
+              ctx.onEvent?.({ type: 'thinking', text: content });
+            } else {
+              ctx.onLog('stdout', content);
+              ctx.onEvent?.({ type: 'content', text: content });
+            }
+          }
+        } else if (type === 'content_block_delta') {
+          // Streaming delta — check if it's thinking or text
+          const delta = obj['delta'] as Record<string, unknown> | undefined;
+          if (delta) {
+            const deltaType = delta['type'] as string | undefined;
+            const text = (delta['text'] ?? delta['thinking'] ?? '') as string;
+            if (text.length > 0) {
+              if (deltaType === 'thinking_delta') {
+                ctx.onEvent?.({ type: 'thinking', text });
+              } else {
+                ctx.onLog('stdout', text);
+                ctx.onEvent?.({ type: 'content', text });
+              }
+            }
+          }
+        } else if (type === 'tool_use') {
+          const toolName = (obj['tool_name'] ?? obj['name'] ?? 'unknown') as string;
+          const toolId = (obj['tool_id'] ?? obj['id'] ?? '') as string;
+          const params = obj['parameters'] as Record<string, unknown> | undefined;
+          const filePath = (params?.['file_path'] ?? params?.['path'] ?? params?.['command']) as string | undefined;
+          toolNames.set(toolId, toolName);
+          ctx.onEvent?.({ type: 'tool_start', name: toolName, file: filePath, description: filePath });
+        } else if (type === 'tool_result') {
+          const toolId = (obj['tool_id'] ?? '') as string;
+          const status = obj['status'] === 'error' ? 'error' as const : 'success' as const;
+          const toolName = toolNames.get(toolId) ?? 'unknown';
+          ctx.onEvent?.({ type: 'tool_end', name: toolName, status });
+        } else if (type === 'assistant') {
+          // Older format: full assistant message with content blocks
+          const message = obj['message'] as Record<string, unknown> | undefined;
+          if (message) {
+            const content = message['content'];
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                const b = block as Record<string, unknown>;
+                if (b['type'] === 'text') {
+                  const text = (b['text'] ?? '') as string;
+                  if (text.length > 0) {
+                    ctx.onLog('stdout', text);
+                    ctx.onEvent?.({ type: 'content', text });
+                  }
+                } else if (b['type'] === 'thinking') {
+                  const text = (b['thinking'] ?? b['text'] ?? '') as string;
+                  if (text.length > 0) {
+                    ctx.onEvent?.({ type: 'thinking', text });
+                  }
+                }
+              }
+            }
+          }
+        }
+        // init, result, error types are handled by parseClaudeStreamJson after completion
+      } catch {
+        // Not valid JSON — forward as-is
+        if (line.length > 0) {
+          ctx.onLog('stdout', line + '\n');
+        }
+      }
+    };
+
     const result = await runChildProcess({
       command: resolvedCommand,
       args,
@@ -193,9 +277,28 @@ class ClaudeAdapter implements FixyAdapter {
       env,
       stdin: ctx.prompt,
       signal: ctx.signal,
-      onLog: ctx.onLog,
+      onLog: (stream, chunk) => {
+        if (stream === 'stderr') {
+          if (chunk.trim().length > 0) ctx.onLog('stderr', chunk);
+          return;
+        }
+        // stdout: buffer and parse JSONL line-by-line
+        stdoutLineBuffer += chunk;
+        const lines = stdoutLineBuffer.split('\n');
+        // Last element is incomplete — keep in buffer
+        stdoutLineBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.length > 0) forwardJsonLine(trimmed);
+        }
+      },
       onSpawn: ctx.onSpawn,
     });
+
+    // Flush remaining buffer
+    if (stdoutLineBuffer.trim().length > 0) {
+      forwardJsonLine(stdoutLineBuffer.trim());
+    }
 
     const parsed = parseClaudeStreamJson(result.stdout);
 
