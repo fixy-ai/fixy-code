@@ -929,9 +929,11 @@ export async function startRepl(params: ReplParams): Promise<void> {
       .replace(/@\w+/g, (m) => m.toLowerCase())
       .replace(/^\/\w+/g, (m) => m.toLowerCase());
 
-    // Resolve @worker to the actual worker agent
+    // Resolve @worker — strip it so it becomes a bare message routed to _handleBare
+    // (which applies workerModelOverride). Don't replace with @claude — that would
+    // bypass the worker model override and show wrong label.
     const currentWorker = thread.workerModel ?? 'claude';
-    normalized = normalized.replace(/@worker\b/g, `@${currentWorker}`);
+    normalized = normalized.replace(/@worker\b\s*/g, '').trim();
 
     // Auto-resolve partial /commands to first match (e.g. /qu → /quit, /he → /help)
     // Requires at least 2 chars (e.g. "/a") to avoid bare "/" matching everything.
