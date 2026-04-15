@@ -224,6 +224,8 @@ export class FixyCommandRunner {
       ctx.onLog('stdout', msg);
     };
 
+    const startTime = Date.now();
+
     // ── INTENT DETECTION ──
     const intent = forceFullPipeline ? 'task' as const : detectIntent(prompt);
 
@@ -236,7 +238,8 @@ export class FixyCommandRunner {
       } else {
         await this._runParallelProgressiveReveal(allAdapters, prompt, ctx);
       }
-      log(`\n${FIXY_CLR}Fixy · Complete${RESET}\n`);
+      const elapsedQ = Math.round((Date.now() - startTime) / 1000);
+      log(`\n${FIXY_CLR}Fixy · Complete \x1b[2m(${elapsedQ}s)${RESET}\n`);
       await this._appendSystemMessage('Question answered', ctx);
       return;
     }
@@ -248,7 +251,8 @@ export class FixyCommandRunner {
       } else {
         await this._runParallelProgressiveReveal(allAdapters, prompt, ctx);
       }
-      log(`\n${FIXY_CLR}Fixy · Complete${RESET}\n`);
+      const elapsedA = Math.round((Date.now() - startTime) / 1000);
+      log(`\n${FIXY_CLR}Fixy · Complete \x1b[2m(${elapsedA}s)${RESET}\n`);
       log(`${FIXY_CLR}Fixy · To execute, run: /all! ${prompt}${RESET}\n`);
       await this._appendSystemMessage('Discussion only', ctx);
       return;
