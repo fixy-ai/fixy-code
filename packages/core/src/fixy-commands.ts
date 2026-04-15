@@ -41,14 +41,16 @@ const DIM = '\x1b[2m';
 
 /** Map tool names to human-readable action labels */
 function toolAction(name: string, file?: string): string {
-  const n = name.toLowerCase();
+  const n = name.toLowerCase().replace(/_/g, '');
   let action: string;
-  if (n === 'read' || n === 'view') action = 'Reading';
-  else if (n === 'edit' || n === 'update') action = 'Editing';
-  else if (n === 'write' || n === 'create') action = 'Creating';
-  else if (n === 'bash' || n === 'shell') action = 'Running';
-  else if (n === 'grep' || n === 'search') action = 'Searching';
-  else if (n === 'glob') action = 'Finding files';
+  if (n === 'read' || n === 'view' || n === 'readfile') action = 'Reading';
+  else if (n === 'edit' || n === 'update' || n === 'editfile') action = 'Editing';
+  else if (n === 'write' || n === 'create' || n === 'writefile' || n === 'createfile') action = 'Creating';
+  else if (n === 'bash' || n === 'shell' || n === 'executecommand') action = 'Running';
+  else if (n === 'grep' || n === 'search' || n === 'searchfiles') action = 'Searching';
+  else if (n === 'glob' || n === 'listdirectory' || n === 'listdir') action = 'Listing';
+  else if (n === 'delete' || n === 'deletefile' || n === 'remove') action = 'Deleting';
+  else if (n === 'rename' || n === 'move' || n === 'movefile') action = 'Moving';
   else action = name;
   return file ? `${action} ${file}` : action;
 }
