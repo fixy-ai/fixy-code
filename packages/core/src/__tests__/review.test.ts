@@ -252,8 +252,8 @@ describe('runReviewLoop', () => {
   function makeConfig(overrides?: Partial<ReviewLoopConfig>): ReviewLoopConfig {
     return {
       maxAutoFixRounds: 3,
-      reviewers: [{ id: 'claude', name: 'Claude' } as any],
-      worker: { id: 'codex', name: 'Codex' } as any,
+      reviewers: [{ id: 'claude', name: 'Claude' } as unknown as ReviewLoopConfig['reviewers'][0]],
+      worker: { id: 'codex', name: 'Codex' } as unknown as ReviewLoopConfig['worker'],
       projectRoot: '/tmp/test',
       onLog: () => {},
       signal: new AbortController().signal,
@@ -263,7 +263,7 @@ describe('runReviewLoop', () => {
 
   it('happy path — reviewer approves immediately, result.approved=true, rounds=1', async () => {
     const config = makeConfig();
-    const callAdapter = async (_adapter: any, _prompt: string): Promise<string> => {
+    const callAdapter = async (_adapter: unknown, _prompt: string): Promise<string> => {
       return 'APPROVED';
     };
 
