@@ -5,6 +5,7 @@ import type { FixyExecutionContext, FixyExecutionResult } from './adapter.js';
 import type { AdapterRegistry } from './registry.js';
 import { detectDisagreement } from './disagreement.js';
 import type { DisagreementResult } from './disagreement.js';
+import { detectIntent } from './intent.js';
 import { defaultSettings, loadSettings, saveSettings } from './settings.js';
 import type { FixySettings } from './settings.js';
 import type { LocalThreadStore } from './store.js';
@@ -65,7 +66,11 @@ export class FixyCommandRunner {
         break;
       case '/all':
       case '/a':
-        await this._handleAll(args, ctx);
+        await this._handleAll(args, ctx, false);
+        break;
+      case '/all!':
+      case '/a!':
+        await this._handleAll(args, ctx, true);
         break;
       case '/settings':
         await this._handleSettings(args, ctx);
@@ -196,7 +201,7 @@ export class FixyCommandRunner {
     await saveSettings(settings);
   }
 
-  private async _handleAll(prompt: string, ctx: FixyCommandContext): Promise<void> {
+  private async _handleAll(prompt: string, ctx: FixyCommandContext, forceFullPipeline = false): Promise<void> {
     if (!prompt.trim()) {
       await this._appendSystemMessage('/all requires a prompt — usage: @all <prompt>', ctx);
       return;
@@ -219,19 +224,45 @@ export class FixyCommandRunner {
       ctx.onLog('stdout', msg);
     };
 
-    // Simple task detection: short prompts without coding/task keywords → broadcast to all agents
-    const TASK_KEYWORDS =
-      /\b(implement|refactor|build|fix|create|add|remove|delete|update|migrate|deploy|test|review|debug|optimize|change|move|rename|install|configure|setup|write|design|plan|task|feature|bug|issue|todo)\b/i;
-    const isComplexTask = prompt.length > 60 || TASK_KEYWORDS.test(prompt);
+    // ── INTENT DETECTION ──
+    const intent = forceFullPipeline ? 'task' as const : detectIntent(prompt);
 
-    if (!isComplexTask) {
-      // Simple mode: broadcast to all agents, each responds independently
-      for (const adapter of allAdapters) {
-        log(`\n${agentLabel(adapter.id)}\n`);
-        await this._callAdapterForAll(adapter, prompt, ctx);
+    if (intent === 'question') {
+      // Questions only need discussion, not the full pipeline
+      if (soloMode) {
+        // Solo mode: just send to the worker directly
+        log(`\n${agentLabel(workerAdapter.id)}\n`);
+        await this._callAdapterForAll(workerAdapter, prompt, ctx);
+      } else {
+        // Multi-adapter: broadcast to all agents for discussion
+        for (const adapter of allAdapters) {
+          log(`\n${agentLabel(adapter.id)}\n`);
+          await this._callAdapterForAll(adapter, prompt, ctx);
+        }
       }
+      log(`\n${phaseHeader('complete')}\n`);
+      await this._appendSystemMessage(phaseHeader('complete — question answered'), ctx);
       return;
     }
+
+    if (intent === 'ambiguous') {
+      // Ambiguous: run discussion only, then hint about /all!
+      if (soloMode) {
+        log(`\n${agentLabel(workerAdapter.id)}\n`);
+        await this._callAdapterForAll(workerAdapter, prompt, ctx);
+      } else {
+        for (const adapter of allAdapters) {
+          log(`\n${agentLabel(adapter.id)}\n`);
+          await this._callAdapterForAll(adapter, prompt, ctx);
+        }
+      }
+      log(`\n${phaseHeader('complete')}\n`);
+      log(`\n${PH}Fixy · Agents discussed. To execute, run: /all! ${prompt}${RESET}\n`);
+      await this._appendSystemMessage(phaseHeader('complete — discussion only'), ctx);
+      return;
+    }
+
+    // intent === 'task' → fall through to full 6-phase pipeline below
 
     // Helpers to call an adapter and record its response
     const callAdapter = async (
@@ -1348,6 +1379,7 @@ export class FixyCommandRunner {
       '',
       '  Commands (short):',
       '    /all (/a)              Run collaboration engine',
+      '    /all! (/a!)            Force full pipeline (skip intent detection)',
       '    /worker (/w)           Set default worker',
       '    /model (/m)            View or change models',
       '    /new (/n)              Create new session',
@@ -1781,6 +1813,7 @@ export class FixyCommandRunner {
       '',
       `${B}Commands${R}`,
       `  ${I}/all${R}     ${I}(/a)${R}    ${D}Run collaboration engine on all agents${R}`,
+      `  ${I}/all!${R}    ${I}(/a!)${R}   ${D}Force full pipeline (skip intent detection)${R}`,
       `  ${I}/worker${R}  ${I}(/w)${R}    ${D}Set the worker adapter${R}`,
       `  ${I}/model${R}   ${I}(/m)${R}    ${D}View or change adapter models${R}`,
       `  ${I}/new${R}     ${I}(/n)${R}    ${D}Create a new session${R}`,

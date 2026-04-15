@@ -323,7 +323,7 @@ describe('FixyCommandRunner', () => {
 
     const logs: string[] = [];
     await runner.run(makeCtx({
-      rest: '/all big task',
+      rest: '/all build a big task with many items',
       onLog: (_s, msg) => logs.push(msg),
     }));
 
@@ -606,5 +606,104 @@ describe('FixyCommandRunner', () => {
 
     collectGitDiffSpy.mockRestore();
     runReviewLoopSpy.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 12: /all question intent — only discussion, no plan/execute
+  // -------------------------------------------------------------------------
+  it('/all question — skips plan/execute, only runs discussion', async () => {
+    const adapter1 = createStubAdapter('claude', 'Claude');
+    const adapter2 = createStubAdapter('codex', 'Codex');
+    registry.register(adapter1);
+    registry.register(adapter2);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all what framework should we use?',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    // Should have 'Complete' but NOT 'Plan' or 'Execute' phase headers
+    expect(logs.some((l) => l.includes('Complete'))).toBe(true);
+    expect(logs.some((l) => l.includes('Plan'))).toBe(false);
+    expect(logs.some((l) => l.includes('Execute'))).toBe(false);
+
+    const fresh = await store.getThread(thread.id, thread.projectRoot);
+    const completionMsg = fresh.messages.find(
+      (m) => m.role === 'system' && m.content.includes('question answered'),
+    );
+    expect(completionMsg).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 13: /all task intent — full 6-phase pipeline
+  // -------------------------------------------------------------------------
+  it('/all task — runs full pipeline with plan and execute', async () => {
+    const reviewModule = await import('../review.js');
+    const collectGitDiffSpy = vi.spyOn(reviewModule, 'collectGitDiff').mockResolvedValue('');
+
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'I agree. APPROVED\n1. Build the API',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'Done building the API.',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all build a REST API',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    expect(logs.some((l) => l.includes('Discuss'))).toBe(true);
+    expect(logs.some((l) => l.includes('Plan'))).toBe(true);
+    expect(logs.some((l) => l.includes('Execute'))).toBe(true);
+
+    collectGitDiffSpy.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 14: /all! force flag — full pipeline even for questions
+  // -------------------------------------------------------------------------
+  it('/all! force — runs full pipeline even for questions', async () => {
+    const reviewModule = await import('../review.js');
+    const collectGitDiffSpy = vi.spyOn(reviewModule, 'collectGitDiff').mockResolvedValue('');
+
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'I agree. APPROVED\n1. Research frameworks',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'Done researching.',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all! what should we use?',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    // Force flag should run full pipeline despite question intent
+    expect(logs.some((l) => l.includes('Discuss'))).toBe(true);
+    expect(logs.some((l) => l.includes('Plan'))).toBe(true);
+    expect(logs.some((l) => l.includes('Execute'))).toBe(true);
   });
 });

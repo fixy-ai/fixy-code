@@ -82,3 +82,6 @@ export {
   deduplicateIssues,
   runReviewLoop,
 } from './review.js';
+
+export { detectIntent } from './intent.js';
+export type { InputIntent } from './intent.js';
