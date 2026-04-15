@@ -148,7 +148,6 @@ export interface ReviewLoopResult {
 }
 
 const RESET = '\x1b[0m';
-const DIM = '\x1b[2m';
 const PH = '\x1b[2;36m';
 const RED = '\x1b[31m';
 const DIM_YELLOW = '\x1b[2;33m';
@@ -157,15 +156,11 @@ const AGENT_COLORS: Record<string, string> = {
   codex: '\x1b[38;5;75m',
   gemini: '\x1b[38;5;141m',
 };
-const FIXY_COLOR = '\x1b[38;5;105m';
 
 export async function runReviewLoop(
   config: ReviewLoopConfig,
   callAdapter: (adapter: FixyAdapter, prompt: string) => Promise<string>,
 ): Promise<ReviewLoopResult> {
-  void DIM;
-  void FIXY_COLOR;
-
   let diff = await collectGitDiff(config.projectRoot);
 
   if (!diff.trim()) {
