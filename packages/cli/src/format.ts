@@ -35,8 +35,7 @@ export function startupPanel(
   authInfo?: { email: string; plan: string } | null,
   threadName?: string,
 ): string {
-  const cols = Math.max(Math.min(process.stdout.columns ?? 80, 80), 52);
-  const innerWidth = cols - 2;
+  const cols = process.stdout.columns ?? 80;
 
   const homeDir = os.homedir();
   const rel = path.relative(homeDir, projectRoot);
@@ -50,32 +49,20 @@ export function startupPanel(
     .join(' · ');
 
   const contentLines: string[] = [
-    `${BOLD}${FIXY_COLOR}Fixy v${version}${RESET}`,
-    `${DIM}Agents: ${agentDisplay}${RESET}`,
-    `${DIM}Worker: @worker → @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
-    `${DIM}Directory: ${dirDisplay}${RESET}`,
-    `${DIM}Thread: ${threadName ? `${threadName} (${threadId.slice(0, 8)}…)` : threadId}${RESET}`,
+    `  ${BOLD}${FIXY_COLOR}Fixy v${version}${RESET}`,
+    `  ${DIM}Agents: ${agentDisplay}${RESET}`,
+    `  ${DIM}Worker: @worker → @${worker}${models[worker] ? ` (${models[worker]})` : ''}${RESET}`,
+    `  ${DIM}Directory: ${dirDisplay}${RESET}`,
+    `  ${DIM}Thread: ${threadName ? `${threadName} (${threadId.slice(0, 8)}…)` : threadId}${RESET}`,
     authInfo
-      ? `${DIM}Account: ${authInfo.email} (${authInfo.plan})${RESET}`
-      : `${DIM}Account: free · /login to sign in${RESET}`,
+      ? `  ${DIM}Account: ${authInfo.email} (${authInfo.plan})${RESET}`
+      : `  ${DIM}Account: free · /login to sign in${RESET}`,
   ];
 
-  // eslint-disable-next-line no-control-regex
-  const visibleLen = (s: string): number => s.replace(/\x1b\[[0-9;]*m/g, '').length;
+  const separator = `${FIXY_COLOR}${'─'.repeat(cols)}${RESET}`;
+  const hints = `  ${DIM}@ mention agents · / commands · Alt+Enter new line · \\ continue · Tab complete · ESC cancel · Ctrl-C quit${RESET}`;
 
-  const padLine = (line: string): string => {
-    const vl = visibleLen(line);
-    const available = innerWidth - 2; // 1 space on each side
-    const spaces = Math.max(0, available - vl);
-    return `${FIXY_COLOR}│${RESET} ${line}${' '.repeat(spaces)} ${FIXY_COLOR}│${RESET}`;
-  };
-
-  const top = `${FIXY_COLOR}╭${'─'.repeat(innerWidth)}╮${RESET}`;
-  const bottom = `${FIXY_COLOR}╰${'─'.repeat(innerWidth)}╯${RESET}`;
-
-  const hints = `${DIM}  @ mention agents · / commands · Alt+Enter new line · \\ continue · Tab complete · ESC cancel · Ctrl-C quit${RESET}`;
-
-  return [top, ...contentLines.map(padLine), bottom, hints].join('\n');
+  return ['', ...contentLines, separator, hints, ''].join('\n');
 }
 
 // Agent brand colors for spinner labels
