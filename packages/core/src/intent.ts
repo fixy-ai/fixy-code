@@ -6,7 +6,7 @@ const QUESTION_STARTERS =
 
 // Phrases anywhere in the input that signal a question
 const QUESTION_PHRASES =
-  /\bvs\.?\b|\bversus\b|\bcompare\b|\bdifference between\b|\bpros and cons\b|\brecommend\b|\bsuggest\b|\bthink about\b|\bopinion on\b|\bthoughts on\b|\badvice on\b|\bbest way\b|\bbetter\b/i;
+  /\bvs\.?\b|\bversus\b|\bcompare\b|\bdifference between\b|\bpros and cons\b|\brecommend\b|\bsuggest\b|\bthink about\b|\bopinion on\b|\bthoughts on\b|\badvice on\b|\bbest way\b|\bbetter\b|\btell me\b|\bexplain\b|\bshow me\b|\blist\b|\bdescribe\b|\bwhat are\b|\bwhat is\b/i;
 
 // Action verbs that strongly signal a task when at the start of the input
 const TASK_STARTERS =
