@@ -116,6 +116,7 @@ export class TurnController {
       case 'bare': {
         const lastAgent = this._findLastAgentId(thread);
         const resolvedAgentId = lastAgent ?? thread.workerModel;
+        const isWorkerDispatch = resolvedAgentId === thread.workerModel;
         let bareBody = parsed.body;
         if (parsed.fileRefs.length > 0) {
           const { prefix, errors } = await this._resolveFileRefs(
@@ -127,7 +128,7 @@ export class TurnController {
           }
           bareBody = prefix + bareBody;
         }
-        const result = await this._dispatchToAdapter(resolvedAgentId, bareBody, params);
+        const result = await this._dispatchToAdapter(resolvedAgentId, bareBody, params, isWorkerDispatch);
         accumulate(result);
         break;
       }
@@ -169,11 +170,21 @@ export class TurnController {
     agentId: string,
     body: string,
     params: TurnParams,
+    isWorkerDispatch = false,
   ): Promise<FixyExecutionResult> {
     const freshThread = await params.store.getThread(params.thread.id, params.thread.projectRoot);
 
     const adapter = params.registry.require(agentId);
     const runId = randomUUID();
+
+    // Apply worker model override for bare/worker dispatches
+    let modelOverride: string | undefined;
+    if (isWorkerDispatch) {
+      const { loadSettings } = await import('./settings.js');
+      const settings = await loadSettings();
+      const override = settings.workerModelOverride?.trim();
+      if (override && override.length > 0) modelOverride = override;
+    }
 
     const ctx: FixyExecutionContext = {
       runId,
@@ -188,6 +199,7 @@ export class TurnController {
       prompt: body,
       session: freshThread.agentSessions[agentId] ?? null,
       adapterArgs: freshThread.adapterArgs,
+      modelOverride,
       onLog: (stream, chunk) => params.onLog(stream, chunk, agentId),
       onEvent: (event) => renderEvent(event, (stream, chunk) => params.onLog(stream, chunk, agentId)),
       onMeta: () => {},
