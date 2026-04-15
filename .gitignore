@@ -30,6 +30,7 @@ Thumbs.db
 # Internal planning & strategy (not part of the product)
 *-discussion.txt
 IMPLEMENTATION-PLAN-FIXYCODE.md
+AI-PROVIDERS-COMPARISON.md
 
 # npm
 *.tgz

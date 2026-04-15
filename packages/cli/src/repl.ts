@@ -817,6 +817,8 @@ export async function startRepl(params: ReplParams): Promise<void> {
       spinner = null;
       turnActive = false;
       turnAbort = null;
+      // Add visual breathing room between output and next prompt
+      process.stdout.write('\n');
       process.stdout.write('\n');
     }
   };
