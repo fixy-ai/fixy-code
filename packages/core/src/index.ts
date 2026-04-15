@@ -73,11 +73,12 @@ export {
 } from './api.js';
 export type { CodeProfile, CodeSession, CodePlan, ProviderModels } from './api.js';
 
-export type { IssueSeverity, CodeIssue, ReviewResult } from './review.js';
+export type { IssueSeverity, CodeIssue, ReviewResult, ReviewLoopConfig, ReviewLoopResult } from './review.js';
 export {
   collectGitDiff,
   buildReviewPrompt,
   parseReviewResponse,
   isBlocking,
   deduplicateIssues,
+  runReviewLoop,
 } from './review.js';

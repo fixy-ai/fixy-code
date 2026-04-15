@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import type { FixyAdapter } from './adapter.js';
 
 export type IssueSeverity = 'CRITICAL' | 'HIGH' | 'LOW';
 
@@ -127,4 +128,123 @@ export function deduplicateIssues(issues: CodeIssue[]): CodeIssue[] {
   }
 
   return result;
+}
+
+export interface ReviewLoopConfig {
+  maxAutoFixRounds: number;
+  reviewers: FixyAdapter[];
+  worker: FixyAdapter;
+  projectRoot: string;
+  onLog: (stream: 'stdout' | 'stderr', chunk: string) => void;
+  signal: AbortSignal;
+}
+
+export interface ReviewLoopResult {
+  approved: boolean;
+  rounds: number;
+  allIssues: CodeIssue[];
+  warnings: string[];
+  escalated: boolean;
+}
+
+const RESET = '\x1b[0m';
+const DIM = '\x1b[2m';
+const PH = '\x1b[2;36m';
+const RED = '\x1b[31m';
+const DIM_YELLOW = '\x1b[2;33m';
+const AGENT_COLORS: Record<string, string> = {
+  claude: '\x1b[38;5;208m',
+  codex: '\x1b[38;5;75m',
+  gemini: '\x1b[38;5;141m',
+};
+const FIXY_COLOR = '\x1b[38;5;105m';
+
+export async function runReviewLoop(
+  config: ReviewLoopConfig,
+  callAdapter: (adapter: FixyAdapter, prompt: string) => Promise<string>,
+): Promise<ReviewLoopResult> {
+  void DIM;
+  void FIXY_COLOR;
+
+  let diff = await collectGitDiff(config.projectRoot);
+
+  if (!diff.trim()) {
+    return { approved: true, rounds: 0, allIssues: [], warnings: [], escalated: false };
+  }
+
+  const allIssues: CodeIssue[] = [];
+  let lowIssues: CodeIssue[] = [];
+
+  for (let round = 1; round <= config.maxAutoFixRounds; round++) {
+    if (config.signal.aborted) {
+      return { approved: false, rounds: round - 1, allIssues, warnings: lowIssues.map((i) => `${i.file}:${i.line ?? '?'} — ${i.description}`), escalated: false };
+    }
+
+    const reviewPrompt = buildReviewPrompt(diff);
+
+    config.onLog('stdout', `\n${PH}Fixy · Code review · round ${round}/${config.maxAutoFixRounds}${RESET}\n`);
+
+    const roundIssues: CodeIssue[] = [];
+
+    if (config.reviewers.length > 0) {
+      const responses = await Promise.all(
+        config.reviewers.map((reviewer) => callAdapter(reviewer, reviewPrompt)),
+      );
+
+      for (let i = 0; i < config.reviewers.length; i++) {
+        const reviewer = config.reviewers[i];
+        const response = responses[i];
+        const agentColor = AGENT_COLORS[reviewer.id] ?? '\x1b[37m';
+
+        config.onLog('stdout', `${agentColor}@${reviewer.id}:${RESET}\n`);
+
+        const parsed = parseReviewResponse(reviewer.id, response);
+        roundIssues.push(...parsed);
+      }
+    }
+
+    const deduped = deduplicateIssues(roundIssues);
+    allIssues.push(...deduped);
+
+    const blockingIssues = deduped.filter((i) => i.severity === 'CRITICAL' || i.severity === 'HIGH');
+    lowIssues = deduped.filter((i) => i.severity === 'LOW');
+
+    for (const issue of blockingIssues) {
+      config.onLog('stdout', `${RED}[${issue.severity}] ${issue.file}:${issue.line ?? '?'} — ${issue.description}${RESET}\n`);
+    }
+
+    for (const issue of lowIssues) {
+      config.onLog('stdout', `${DIM_YELLOW}[LOW] ${issue.file}:${issue.line ?? '?'} — ${issue.description}${RESET}\n`);
+    }
+
+    if (blockingIssues.length === 0) {
+      return {
+        approved: true,
+        rounds: round,
+        allIssues,
+        warnings: lowIssues.map((i) => `${i.file}:${i.line ?? '?'} — ${i.description}`),
+        escalated: false,
+      };
+    }
+
+    if (round < config.maxAutoFixRounds) {
+      const issueList = blockingIssues
+        .map((i) => `- [${i.severity}] ${i.file}:${i.line ?? '?'} — ${i.description}`)
+        .join('\n');
+
+      const fixPrompt = `Fix the following CRITICAL and HIGH severity issues in the code:\n\n${issueList}\n\nApply the necessary changes to resolve all listed issues.`;
+
+      await callAdapter(config.worker, fixPrompt);
+
+      diff = await collectGitDiff(config.projectRoot);
+    }
+  }
+
+  return {
+    approved: false,
+    rounds: config.maxAutoFixRounds,
+    allIssues,
+    warnings: lowIssues.map((i) => `${i.file}:${i.line ?? '?'} — ${i.description}`),
+    escalated: true,
+  };
 }

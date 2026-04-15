@@ -118,6 +118,7 @@ const SLASH_MENU: Array<{ name: string; desc: string }> = [
   { name: '/logout', desc: 'Sign out from fixy.ai' },
   { name: '/settings', desc: 'View or update global settings' },
   { name: '/red-room', desc: 'Toggle adversarial mode on/off' },
+  { name: '/review', desc: 'Review code changes with all agents (/rv)' },
   { name: '/diff', desc: 'Show git diff & untracked files (/d)' },
   { name: '/copy', desc: 'Copy last response to clipboard' },
   { name: '/clear', desc: 'Clear the terminal screen (/cls)' },

@@ -140,6 +140,10 @@ export class FixyCommandRunner {
       case '/ag':
         await this._handleAgents(args, ctx);
         break;
+      case '/review':
+      case '/rv':
+        await this._handleReview(args, ctx);
+        break;
       default:
         await this._appendSystemMessage(`unknown command: ${command}`, ctx);
     }
@@ -1225,6 +1229,7 @@ export class FixyCommandRunner {
       '    /settings              View/update settings',
       '    /red-room              Toggle adversarial mode',
       '    /diff (/d)             Show git diff & untracked files',
+      '    /review (/rv)          Review code changes with agents',
       '    /copy                  Copy last response to clipboard',
       '    /clear (/cls)          Clear the terminal screen',
       '    /stats                 Show session token usage & statistics',
@@ -1424,6 +1429,138 @@ export class FixyCommandRunner {
     await ctx.store.appendMessage(thread.id, thread.projectRoot, agentMsg);
   }
 
+  private async _handleReview(args: string, ctx: FixyCommandContext): Promise<void> {
+    const { runReviewLoop } = await import('./review.js');
+    const settings = await loadSettings();
+    const disabledSet = new Set(settings.disabledAdapters ?? []);
+    const allAdapters = ctx.registry.list().filter((a) => !disabledSet.has(a.id));
+    const stagedOnly = args.includes('--staged');
+    const cleanArgs = args.replace('--staged', '').trim();
+
+    // Resolve worker
+    const workerId = ctx.thread.workerModel ?? 'claude';
+    const workerAdapter = ctx.registry.require(workerId);
+
+    // Resolve reviewers: specific @agent or all non-worker adapters
+    let reviewers: typeof allAdapters;
+    const mentionMatch = cleanArgs.match(/@(\w+)/);
+    if (mentionMatch?.[1]) {
+      const mentioned = ctx.registry.require(mentionMatch[1]);
+      reviewers = [mentioned];
+    } else {
+      reviewers = allAdapters.filter((a) => a.id !== workerId);
+      if (reviewers.length === 0) reviewers = [workerAdapter];
+    }
+
+    const log = (msg: string): void => {
+      ctx.onLog('stdout', msg);
+    };
+
+    // Build callAdapter helper (same pattern as _handleAll)
+    const callAdapter = async (
+      adapter: typeof workerAdapter,
+      prompt: string,
+    ): Promise<string> => {
+      const runId = (await import('node:crypto')).randomUUID();
+      const execCtx: FixyExecutionContext = {
+        runId,
+        agent: { id: adapter.id, name: adapter.name },
+        threadContext: {
+          threadId: ctx.thread.id,
+          projectRoot: ctx.thread.projectRoot,
+          worktreePath: ctx.thread.projectRoot,
+          repoRef: null,
+        },
+        messages: ctx.thread.messages,
+        prompt,
+        session: ctx.thread.agentSessions[adapter.id] ?? null,
+        adapterArgs: ctx.thread.adapterArgs,
+        onLog: ctx.onLog,
+        onMeta: () => {},
+        onSpawn: () => {},
+        signal: ctx.signal,
+      };
+
+      const result = await adapter.execute(execCtx);
+      ctx.thread.agentSessions[adapter.id] = result.session;
+
+      const agentMsg: FixyMessage = {
+        id: runId,
+        createdAt: new Date().toISOString(),
+        role: 'agent',
+        agentId: adapter.id,
+        content: result.summary,
+        runId,
+        dispatchedTo: [],
+        patches: result.patches,
+        warnings: result.warnings,
+      };
+      await ctx.store.appendMessage(ctx.thread.id, ctx.thread.projectRoot, agentMsg);
+      return result.summary;
+    };
+
+    // Collect diff to check if there's anything to review
+    const { collectGitDiff } = await import('./review.js');
+    const diff = await collectGitDiff(ctx.thread.projectRoot, stagedOnly);
+    if (!diff.trim()) {
+      log(`\n${PH}Fixy · Code review · no changes to review${RESET}\n`);
+      return;
+    }
+
+    const result = await runReviewLoop(
+      {
+        maxAutoFixRounds: 3,
+        reviewers,
+        worker: workerAdapter,
+        projectRoot: ctx.thread.projectRoot,
+        onLog: ctx.onLog,
+        signal: ctx.signal,
+      },
+      callAdapter,
+    );
+
+    if (result.approved) {
+      log(`\n${PH}Fixy · Code review · approved ✅${RESET}\n`);
+      if (result.warnings.length > 0) {
+        const DIM_YELLOW = '\x1b[2;33m';
+        log(`${DIM_YELLOW}Warnings:${RESET}\n`);
+        for (const w of result.warnings) {
+          log(`${DIM_YELLOW}  • ${w}${RESET}\n`);
+        }
+      }
+      return;
+    }
+
+    if (result.escalated) {
+      const RED = '\x1b[31m';
+      const DIM = '\x1b[2m';
+      const blockingIssues = result.allIssues.filter(
+        (i) => i.severity === 'CRITICAL' || i.severity === 'HIGH',
+      );
+
+      const issueLines = blockingIssues
+        .map((i) => `│  ${i.severity}: ${i.file}:${i.line ?? '?'} — ${i.description}`)
+        .join('\n');
+
+      const panel = [
+        '',
+        `${RED}╭──────────────────────────────────────────────────────╮${RESET}`,
+        `${RED}│  ⚠  REVIEW: ${result.rounds} fix rounds failed — YOU DECIDE${RESET}`,
+        `${RED}│${RESET}`,
+        `${RED}│  Remaining issues:${RESET}`,
+        `${RED}${issueLines}${RESET}`,
+        `${RED}│${RESET}`,
+        `${DIM}│  1. Fix manually (agents stop)${RESET}`,
+        `${DIM}│  2. Override and approve (accept as-is)${RESET}`,
+        `${DIM}│  3. Ask agents to try a different approach${RESET}`,
+        `${RED}╰──────────────────────────────────────────────────────╯${RESET}`,
+        '',
+      ].join('\n');
+
+      log(panel);
+    }
+  }
+
   private async _handleDiff(ctx: FixyCommandContext): Promise<void> {
     const { execFileSync } = await import('node:child_process');
     try {
@@ -1517,6 +1654,7 @@ export class FixyCommandRunner {
       `  ${I}/fork${R}    ${I}(/fk)${R}   ${D}Fork current session${R}`,
       `  ${I}/status${R}  ${I}(/st)${R}   ${D}Show adapter status${R}`,
       `  ${I}/diff${R}    ${I}(/d)${R}    ${D}Show git diff & untracked files${R}`,
+      `  ${I}/review${R} ${I}(/rv)${R}   ${D}Review code changes with agents${R}`,
       `  ${I}/copy${R}              ${D}Copy last response to clipboard${R}`,
       `  ${I}/clear${R}   ${I}(/cls)${R}  ${D}Clear the terminal screen${R}`,
       `  ${I}/stats${R}              ${D}Show session token usage & statistics${R}`,
