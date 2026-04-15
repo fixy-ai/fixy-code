@@ -235,7 +235,7 @@ export class FixyCommandRunner {
         await this._runParallelProgressiveReveal(allAdapters, prompt, ctx);
       }
       log(`\n${phaseHeader('complete')}\n`);
-      await this._appendSystemMessage(phaseHeader('complete — question answered'), ctx);
+      await this._appendSystemMessage('question answered', ctx);
       return;
     }
 
@@ -247,8 +247,8 @@ export class FixyCommandRunner {
         await this._runParallelProgressiveReveal(allAdapters, prompt, ctx);
       }
       log(`\n${phaseHeader('complete')}\n`);
-      log(`\n${PH}Fixy · Agents discussed. To execute, run: /all! ${prompt}${RESET}\n`);
-      await this._appendSystemMessage(phaseHeader('complete — discussion only'), ctx);
+      log(`${PH}Fixy · To execute, run: /all! ${prompt}${RESET}\n`);
+      await this._appendSystemMessage('discussion only', ctx);
       return;
     }
 
@@ -1576,7 +1576,8 @@ export class FixyCommandRunner {
     prompt: string,
     ctx: FixyCommandContext,
   ): Promise<void> {
-    const AGENT_TIMEOUT_MS = 90_000;
+    const settings = await loadSettings();
+    const AGENT_TIMEOUT_MS = (settings.agentTimeout ?? 120) * 1000;
     const isTTY = process.stdout?.isTTY ?? false;
     const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -1594,6 +1595,7 @@ export class FixyCommandRunner {
     // Track which agent is currently streaming live
     let liveAgentId: string | null = null;
     const completedSet = new Set<string>();
+    const timedOutSet = new Set<string>();
     const completedResults: AgentResult[] = [];
     let pendingResolve: (() => void) | null = null;
 
@@ -1668,7 +1670,7 @@ export class FixyCommandRunner {
         signal: ctx.signal,
       };
 
-      // Race between adapter execution and timeout
+      // Start adapter execution (continues even after timeout)
       const adapterPromise = adapter.execute(execCtx).then((result): AgentResult => ({
         adapterId: adapter.id,
         output: outputBuffer.join(''),
@@ -1684,7 +1686,7 @@ export class FixyCommandRunner {
           resolve({
             adapterId: adapter.id,
             output: '',
-            summary: `@${adapter.id} timed out after ${AGENT_TIMEOUT_MS / 1000}s`,
+            summary: `@${adapter.id} timed out after ${AGENT_TIMEOUT_MS / 1000}s — continuing in background`,
             session: null,
             runId,
             patches: [],
@@ -1694,7 +1696,26 @@ export class FixyCommandRunner {
         }, AGENT_TIMEOUT_MS);
       });
 
-      return Promise.race([adapterPromise, timeoutPromise]).then((entry) => {
+      // Race: if timeout wins, we continue without waiting
+      // But the adapter keeps running — late arrival handler below
+      const raceResult = Promise.race([adapterPromise, timeoutPromise]);
+
+      // Late arrival: if adapter finishes after timeout, print result below prompt
+      adapterPromise.then((lateResult) => {
+        if (!timedOutSet.has(adapter.id)) return; // finished before timeout — already handled
+        // This agent timed out but now finished — print as late arrival
+        completedSet.add(adapter.id);
+        const timeoutSec = AGENT_TIMEOUT_MS / 1000;
+        ctx.onLog('stdout', `\n${agentLabel(adapter.id)} \x1b[2m(late — arrived after ${timeoutSec}s timeout)${RESET}\n`);
+        if (lateResult.output) ctx.onLog('stdout', lateResult.output);
+        ctx.onLog('stdout', '\n');
+        ctx.thread.agentSessions[adapter.id] = lateResult.session;
+        // Fire-and-forget: append message to thread
+        void this._appendAgentMessage(adapter.id, lateResult.summary, lateResult.runId, lateResult.patches, lateResult.warnings, ctx);
+      }).catch(() => { /* adapter failed after timeout — silently ignore */ });
+
+      return raceResult.then((entry) => {
+        if (entry.timedOut) timedOutSet.add(adapter.id);
         completedSet.add(adapter.id);
         completedResults.push(entry);
         if (pendingResolve) {
@@ -1725,7 +1746,7 @@ export class FixyCommandRunner {
         if (!r) break;
 
         if (r.timedOut) {
-          ctx.onLog('stdout', `\n\x1b[2;33m@${r.adapterId} timed out (${AGENT_TIMEOUT_MS / 1000}s) — skipped${RESET}\n`);
+          ctx.onLog('stdout', `\n\x1b[2;33m@${r.adapterId} timed out (${AGENT_TIMEOUT_MS / 1000}s) — will print when ready${RESET}\n`);
         } else if (r.adapterId === liveAgentId) {
           ctx.onLog('stdout', '\n');
         } else {
