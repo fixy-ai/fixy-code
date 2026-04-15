@@ -165,10 +165,11 @@ class CodexAdapter implements FixyAdapter {
     const extraArgsStr = ctx.adapterArgs?.['codex'] ?? settings.codexArgs;
     const extraArgs = extraArgsStr.trim().length > 0 ? extraArgsStr.trim().split(/\s+/) : [];
 
-    // Inject model/effort from settings if set
+    // Inject model: per-invocation override (worker) takes priority over global setting
     const modelArgs: string[] = [];
-    if (settings.codexModel.trim().length > 0) {
-      modelArgs.push('--model', settings.codexModel.trim());
+    const codexModel = ctx.modelOverride?.trim() || settings.codexModel.trim();
+    if (codexModel.length > 0) {
+      modelArgs.push('--model', codexModel);
     }
     // Only pass --reasoning-effort if Codex CLI supports it (check --help output).
     // Older versions (e.g. 0.120.0) do not have this flag.

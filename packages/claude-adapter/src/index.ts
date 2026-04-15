@@ -167,9 +167,10 @@ class ClaudeAdapter implements FixyAdapter {
     // Extra args: thread override takes priority over global setting
     const settings = await loadSettings();
 
-    // Inject model from settings if set (extraArgs can still override via --model in the string)
-    if (settings.claudeModel.trim().length > 0) {
-      args.push('--model', settings.claudeModel.trim());
+    // Inject model: per-invocation override (worker) takes priority over global setting
+    const model = ctx.modelOverride?.trim() || settings.claudeModel.trim();
+    if (model.length > 0) {
+      args.push('--model', model);
     }
 
     const extraArgsStr = ctx.adapterArgs?.['claude'] ?? settings.claudeArgs;

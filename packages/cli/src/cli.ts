@@ -335,6 +335,7 @@ async function main(): Promise<void> {
       currentWorker,
       authInfo,
       thread.name,
+      settings.workerModelOverride || undefined,
     ) + '\n',
   );
 

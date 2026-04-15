@@ -22,6 +22,7 @@ export interface FixySettings {
   geminiModel: string;
   agentTimeout: number;
   showThinking: boolean;
+  workerModelOverride: string;
   disabledAdapters: string[];
 }
 
@@ -44,6 +45,7 @@ export const defaultSettings: FixySettings = {
   geminiModel: '',
   agentTimeout: 120,
   showThinking: true,
+  workerModelOverride: '',
   disabledAdapters: [],
 };
 

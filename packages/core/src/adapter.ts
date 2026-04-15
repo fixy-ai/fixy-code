@@ -30,6 +30,8 @@ export interface FixyExecutionContext {
   adapterArgs?: Record<string, string>;
   /** Streamed stdout/stderr chunks. Adapters MUST call this. */
   onLog: (stream: 'stdout' | 'stderr', chunk: string, agentId?: string) => void;
+  /** Per-invocation model override (e.g., worker uses a different model than direct @agent calls). */
+  modelOverride?: string;
   /** Structured events (thinking, tool use, content) for real-time activity display. */
   onEvent?: (event: AdapterEvent) => void;
   /** Called once with the resolved command + args + env for transcript/logging. */

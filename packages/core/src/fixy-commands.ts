@@ -1938,6 +1938,10 @@ export class FixyCommandRunner {
     const adapter = ctx.registry.require(thread.workerModel);
     const runId = randomUUID();
 
+    // Worker may use a different model than the agent's global model
+    const workerSettings = await loadSettings();
+    const workerModel = workerSettings.workerModelOverride?.trim() || undefined;
+
     const execCtx: FixyExecutionContext = {
       runId,
       agent: { id: adapter.id, name: adapter.name },
@@ -1951,6 +1955,7 @@ export class FixyCommandRunner {
       prompt,
       session: thread.agentSessions[thread.workerModel] ?? null,
       adapterArgs: thread.adapterArgs,
+      modelOverride: workerModel,
       onLog: ctx.onLog,
       onEvent: (event) => renderEvent(event, ctx.onLog),
       onMeta: () => {},

@@ -270,9 +270,10 @@ class GeminiAdapter implements FixyAdapter {
       args.push('--resume', ctx.session.sessionId);
     }
 
-    // Inject model from settings if set
-    if (settings.geminiModel.trim().length > 0) {
-      args.push('--model', settings.geminiModel.trim());
+    // Inject model: per-invocation override (worker) takes priority over global setting
+    const geminiModel = ctx.modelOverride?.trim() || settings.geminiModel.trim();
+    if (geminiModel.length > 0) {
+      args.push('--model', geminiModel);
     }
 
     args.push(...extraArgs);

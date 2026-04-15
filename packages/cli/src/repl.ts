@@ -7,7 +7,7 @@ import type {
   TurnResult,
   WorktreeManager,
 } from '@fixy/core';
-import { loadSettings, loadAuth, heartbeat, toggleThinking, isThinkingVisible, initThinkingFlag } from '@fixy/core';
+import { loadSettings, saveSettings, loadAuth, heartbeat, toggleThinking, isThinkingVisible, initThinkingFlag } from '@fixy/core';
 import { PROMPT, createSpinner } from './format.js';
 
 // ── ANSI color constants for output styling ──
@@ -725,6 +725,50 @@ export async function startRepl(params: ReplParams): Promise<void> {
           const choiceInput = await resolveWorkerChoice(lastMsg.content, interactiveSignal);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
+            // After setting worker adapter, offer worker-specific model selection
+            const adapterId = choiceInput.match(/@fixy \/worker (\w+)/)?.[1];
+            if (adapterId) {
+              const adapter = registry.list().find((a) => a.id === adapterId);
+              if (adapter?.listModels) {
+                try {
+                  const models = await adapter.listModels();
+                  if (models.length > 0) {
+                    const currentSettings = await loadSettings();
+                    const currentWorkerModel = currentSettings.workerModelOverride || '(same as agent)';
+                    process.stdout.write(`\nWorker model: \x1b[38;5;105m${currentWorkerModel}\x1b[0m\n\n`);
+                    process.stdout.write('Choose worker model (separate from agent model):\n');
+                    for (let i = 0; i < models.length; i++) {
+                      const m = models[i];
+                      if (!m) continue;
+                      const desc = m.description ? ` — ${m.description}` : '';
+                      process.stdout.write(`  ${i + 1}. ${m.id}${desc}\n`);
+                    }
+                    process.stdout.write('  0. Same as agent model (no override)\n');
+                    const modelRaw = await askChoice(`\x1b[38;5;105m0-${models.length} or model name\x1b[0m `, interactiveSignal);
+                    if (modelRaw !== null) {
+                      const input = modelRaw.trim();
+                      let workerModel = '';
+                      if (input === '0') {
+                        workerModel = '';
+                      } else {
+                        const n = parseInt(input, 10);
+                        if (n >= 1 && n <= models.length) {
+                          workerModel = models[n - 1]?.id ?? '';
+                        } else if (/[a-zA-Z]/.test(input)) {
+                          workerModel = input;
+                        }
+                      }
+                      currentSettings.workerModelOverride = workerModel;
+                      await saveSettings(currentSettings);
+                      const label = workerModel || '(same as agent)';
+                      process.stdout.write(`\n\x1b[38;5;105m@worker\x1b[0m model set: ${label}\n`);
+                    }
+                  }
+                } catch {
+                  // Model listing failed — skip worker model selection
+                }
+              }
+            }
             return;
           }
         }
