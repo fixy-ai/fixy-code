@@ -10,6 +10,7 @@ export interface FixySettings {
   reviewMode: 'auto' | 'ask_me' | 'manual';
   maxDiscussionRounds: number;
   maxReviewRounds: number;
+  maxCodeReviewRounds: number;
   maxTodosPerBatch: number;
   workerCount: number;
   claudeArgs: string;
@@ -29,6 +30,7 @@ export const defaultSettings: FixySettings = {
   reviewMode: 'auto',
   maxDiscussionRounds: 3,
   maxReviewRounds: 2,
+  maxCodeReviewRounds: 3,
   maxTodosPerBatch: 5,
   workerCount: 1,
   claudeArgs: '',
