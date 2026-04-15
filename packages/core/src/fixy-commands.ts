@@ -494,12 +494,147 @@ export class FixyCommandRunner {
         }
       }
 
-      await this._appendSystemMessage(
-        `${phaseHeader('complete')}\n\nFinal review:\n${finalResults.join('\n')}`,
-        ctx,
-      );
+      // Store final review results for completion message
+      const finalReviewSummary = `\n\nFinal review:\n${finalResults.join('\n')}`;
+
+      // ── PHASE 6: CODE REVIEW ──
+      if (!ctx.signal.aborted) {
+        const { collectGitDiff, runReviewLoop } = await import('./review.js');
+        const diff = await collectGitDiff(ctx.thread.projectRoot);
+
+        if (diff.trim()) {
+          log(`\n${phaseHeader('code review')}\n`);
+
+          const reviewResult = await runReviewLoop(
+            {
+              maxAutoFixRounds: settings.maxCodeReviewRounds ?? 3,
+              reviewers: thinkers,
+              worker: workerAdapter,
+              projectRoot: ctx.thread.projectRoot,
+              onLog: (_stream: 'stdout' | 'stderr', chunk: string) => log(chunk),
+              signal: ctx.signal,
+            },
+            callAdapter,
+          );
+
+          if (reviewResult.approved) {
+            log(`\n${phaseHeader('code review · approved ✅')}\n`);
+            if (reviewResult.warnings.length > 0) {
+              log(`\x1b[2;33mWarnings (non-blocking):\n${reviewResult.warnings.join('\n')}\x1b[0m\n`);
+            }
+            await this._appendSystemMessage(
+              `${phaseHeader('complete · all reviews passed ✅')}${finalReviewSummary}`,
+              ctx,
+            );
+          } else if (reviewResult.escalated) {
+            const issueLines = reviewResult.allIssues
+              .filter(i => i.severity !== 'LOW')
+              .map(i => `  ${i.severity}: ${i.file}${i.line ? ':' + i.line : ''} — ${i.description}`)
+              .join('\n');
+
+            const FIXY_COLOR = '\x1b[38;5;105m';
+            const panel = [
+              `${FIXY_COLOR}╭${'─'.repeat(56)}╮${RESET}`,
+              `${FIXY_COLOR}│${RESET}  ⚠  REVIEW: ${reviewResult.rounds} fix rounds failed — YOU DECIDE${' '.repeat(10)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}${' '.repeat(56)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  Remaining issues:${' '.repeat(37)}${FIXY_COLOR}│${RESET}`,
+              ...issueLines.split('\n').map(l => `${FIXY_COLOR}│${RESET}  ${l}${FIXY_COLOR}│${RESET}`),
+              `${FIXY_COLOR}│${RESET}${' '.repeat(56)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  1. Fix manually (agents stop)${' '.repeat(25)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  2. Override and approve (accept as-is)${' '.repeat(17)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  3. Ask agents to try a different approach${' '.repeat(13)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}╰${'─'.repeat(56)}╯${RESET}`,
+            ].join('\n');
+            log(`\n${panel}\n`);
+
+            await this._appendSystemMessage(
+              `${phaseHeader('complete · review escalated ⚠')}${finalReviewSummary}`,
+              ctx,
+            );
+          } else {
+            await this._appendSystemMessage(
+              `${phaseHeader('complete')}${finalReviewSummary}`,
+              ctx,
+            );
+          }
+        } else {
+          log(`\n${phaseHeader('code review · no changes detected')}\n`);
+          await this._appendSystemMessage(
+            `${phaseHeader('complete')}${finalReviewSummary}`,
+            ctx,
+          );
+        }
+      } else {
+        await this._appendSystemMessage(
+          `${phaseHeader('complete')}${finalReviewSummary}`,
+          ctx,
+        );
+      }
     } else {
-      await this._appendSystemMessage(phaseHeader('complete (solo mode)'), ctx);
+      // Solo mode
+      if (!ctx.signal.aborted) {
+        const { collectGitDiff, runReviewLoop } = await import('./review.js');
+        const diff = await collectGitDiff(ctx.thread.projectRoot);
+
+        if (diff.trim()) {
+          log(`\n${phaseHeader('code review')}\n`);
+
+          const reviewResult = await runReviewLoop(
+            {
+              maxAutoFixRounds: Math.min(settings.maxCodeReviewRounds ?? 3, 2),
+              reviewers: [workerAdapter],
+              worker: workerAdapter,
+              projectRoot: ctx.thread.projectRoot,
+              onLog: (_stream: 'stdout' | 'stderr', chunk: string) => log(chunk),
+              signal: ctx.signal,
+            },
+            callAdapter,
+          );
+
+          if (reviewResult.approved) {
+            log(`\n${phaseHeader('code review · approved ✅')}\n`);
+            if (reviewResult.warnings.length > 0) {
+              log(`\x1b[2;33mWarnings (non-blocking):\n${reviewResult.warnings.join('\n')}\x1b[0m\n`);
+            }
+            await this._appendSystemMessage(
+              phaseHeader('complete · all reviews passed ✅ (solo mode)'),
+              ctx,
+            );
+          } else if (reviewResult.escalated) {
+            const issueLines = reviewResult.allIssues
+              .filter(i => i.severity !== 'LOW')
+              .map(i => `  ${i.severity}: ${i.file}${i.line ? ':' + i.line : ''} — ${i.description}`)
+              .join('\n');
+
+            const FIXY_COLOR = '\x1b[38;5;105m';
+            const panel = [
+              `${FIXY_COLOR}╭${'─'.repeat(56)}╮${RESET}`,
+              `${FIXY_COLOR}│${RESET}  ⚠  REVIEW: ${reviewResult.rounds} fix rounds failed — YOU DECIDE${' '.repeat(10)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}${' '.repeat(56)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  Remaining issues:${' '.repeat(37)}${FIXY_COLOR}│${RESET}`,
+              ...issueLines.split('\n').map(l => `${FIXY_COLOR}│${RESET}  ${l}${FIXY_COLOR}│${RESET}`),
+              `${FIXY_COLOR}│${RESET}${' '.repeat(56)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  1. Fix manually (agents stop)${' '.repeat(25)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  2. Override and approve (accept as-is)${' '.repeat(17)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}│${RESET}  3. Ask agents to try a different approach${' '.repeat(13)}${FIXY_COLOR}│${RESET}`,
+              `${FIXY_COLOR}╰${'─'.repeat(56)}╯${RESET}`,
+            ].join('\n');
+            log(`\n${panel}\n`);
+
+            await this._appendSystemMessage(
+              phaseHeader('complete · review escalated ⚠ (solo mode)'),
+              ctx,
+            );
+          } else {
+            await this._appendSystemMessage(phaseHeader('complete (solo mode)'), ctx);
+          }
+        } else {
+          log(`\n${phaseHeader('code review · no changes detected')}\n`);
+          await this._appendSystemMessage(phaseHeader('complete (solo mode)'), ctx);
+        }
+      } else {
+        await this._appendSystemMessage(phaseHeader('complete (solo mode)'), ctx);
+      }
     }
   }
 

@@ -141,6 +141,9 @@ Run shell commands directly with `!`:
 /red-room                 — show current mode (on/off)
 /red-room on              — enable adversarial mode
 /red-room off             — disable adversarial mode
+/review                   — review code changes with all agents
+/review --staged          — review only staged changes
+/review @claude           — use specific agent to review
 ```
 
 ### Model selection

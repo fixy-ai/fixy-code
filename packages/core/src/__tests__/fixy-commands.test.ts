@@ -420,4 +420,191 @@ describe('FixyCommandRunner', () => {
     expect(agentMsg?.agentId).toBe('fixy');
     expect(agentMsg?.content).toBe('worker response here');
   });
+
+  // -------------------------------------------------------------------------
+  // Test 8: @all Phase 6 — code review approved
+  // -------------------------------------------------------------------------
+  it('@all Phase 6 — code review approved shows "all reviews passed"', async () => {
+    // Mock review module
+    const reviewModule = await import('../review.js');
+    const collectGitDiffSpy = vi.spyOn(reviewModule, 'collectGitDiff').mockResolvedValue('diff --git a/file.ts\n+added line');
+    const runReviewLoopSpy = vi.spyOn(reviewModule, 'runReviewLoop').mockResolvedValue({
+      approved: true,
+      rounds: 1,
+      allIssues: [],
+      warnings: [],
+      escalated: false,
+    });
+
+    // Thinker that agrees to everything
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'I agree. APPROVED\n1. Do the thing',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'Done.',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all implement feature X',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    const fresh = await store.getThread(thread.id, thread.projectRoot);
+    const completionMsg = fresh.messages.find(
+      (m) => m.role === 'system' && m.content.includes('all reviews passed'),
+    );
+    expect(completionMsg).toBeDefined();
+    expect(logs.some(l => l.includes('Code review'))).toBe(true);
+
+    collectGitDiffSpy.mockRestore();
+    runReviewLoopSpy.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 9: @all Phase 6 — code review escalated
+  // -------------------------------------------------------------------------
+  it('@all Phase 6 — escalation shows "review escalated" panel', async () => {
+    const reviewModule = await import('../review.js');
+    const collectGitDiffSpy = vi.spyOn(reviewModule, 'collectGitDiff').mockResolvedValue('diff --git a/file.ts\n+bad code');
+    const runReviewLoopSpy = vi.spyOn(reviewModule, 'runReviewLoop').mockResolvedValue({
+      approved: false,
+      rounds: 3,
+      allIssues: [
+        { severity: 'HIGH' as const, file: 'src/main.ts', line: 10, description: 'Missing null check', agentId: 'codex' },
+      ],
+      warnings: [],
+      escalated: true,
+    });
+
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'I agree. APPROVED\n1. Do the thing',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'Done.',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all implement feature Y',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    const fresh = await store.getThread(thread.id, thread.projectRoot);
+    const completionMsg = fresh.messages.find(
+      (m) => m.role === 'system' && m.content.includes('review escalated'),
+    );
+    expect(completionMsg).toBeDefined();
+    expect(logs.some(l => l.includes('YOU DECIDE'))).toBe(true);
+
+    collectGitDiffSpy.mockRestore();
+    runReviewLoopSpy.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 10: @all Phase 6 — no code changes skips review
+  // -------------------------------------------------------------------------
+  it('@all Phase 6 — no code changes shows "no changes detected"', async () => {
+    const reviewModule = await import('../review.js');
+    const collectGitDiffSpy = vi.spyOn(reviewModule, 'collectGitDiff').mockResolvedValue('');
+
+    const thinkerAdapter = createStubAdapter('codex', 'Codex', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'I agree. APPROVED\n1. Do the thing',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    const workerAdapterObj = createStubAdapter('claude', 'Claude', async () => ({
+      exitCode: 0, signal: null, timedOut: false,
+      summary: 'Done.',
+      session: null, patches: [], warnings: [], errorMessage: null,
+    }));
+
+    registry.register(workerAdapterObj);
+    registry.register(thinkerAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all implement feature Z',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    expect(logs.some(l => l.includes('no changes detected'))).toBe(true);
+
+    collectGitDiffSpy.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 11: @all Phase 6 solo mode — worker reviews own code
+  // -------------------------------------------------------------------------
+  it('@all Phase 6 solo mode — single adapter reviews its own code', async () => {
+    const reviewModule = await import('../review.js');
+    const collectGitDiffSpy = vi.spyOn(reviewModule, 'collectGitDiff').mockResolvedValue('diff --git a/file.ts\n+code');
+    const runReviewLoopSpy = vi.spyOn(reviewModule, 'runReviewLoop').mockResolvedValue({
+      approved: true,
+      rounds: 1,
+      allIssues: [],
+      warnings: [],
+      escalated: false,
+    });
+
+    let callCount = 0;
+    const soloAdapter = createStubAdapter('claude', 'Claude', async () => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          exitCode: 0, signal: null, timedOut: false,
+          summary: '1. Create module\n2. Add tests',
+          session: null, patches: [], warnings: [], errorMessage: null,
+        };
+      }
+      return {
+        exitCode: 0, signal: null, timedOut: false,
+        summary: 'Done implementing.',
+        session: null, patches: [], warnings: [], errorMessage: null,
+      };
+    });
+    registry.register(soloAdapter);
+    thread.workerModel = 'claude';
+
+    const logs: string[] = [];
+    await runner.run(makeCtx({
+      rest: '/all build something cool',
+      onLog: (_s, msg) => logs.push(msg),
+    }));
+
+    // Verify runReviewLoop was called with max 2 rounds (solo mode cap)
+    expect(runReviewLoopSpy).toHaveBeenCalledOnce();
+    const config = runReviewLoopSpy.mock.calls[0][0];
+    expect(config.maxAutoFixRounds).toBeLessThanOrEqual(2);
+
+    // Verify solo mode completion message
+    const fresh = await store.getThread(thread.id, thread.projectRoot);
+    const completionMsg = fresh.messages.find(
+      (m) => m.role === 'system' && m.content.includes('solo mode'),
+    );
+    expect(completionMsg).toBeDefined();
+
+    collectGitDiffSpy.mockRestore();
+    runReviewLoopSpy.mockRestore();
+  });
 });
