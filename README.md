@@ -296,6 +296,7 @@ Settings are stored in `~/.fixy/settings.json`. You can edit this file directly 
 | `geminiArgs` | `""` | Extra CLI flags passed to Gemini on every call |
 | `agentTimeout` | `120` | Per-agent timeout in seconds for @all parallel execution |
 | `showThinking` | `true` | Show real-time thinking and tool activity lines |
+| `workerModelOverride` | `""` | Separate model for @worker (e.g. `haiku` while @claude uses `opus`) |
 | `disabledAdapters` | `[]` | Agents excluded from @all broadcasts |
 
 ### Per-conversation overrides
