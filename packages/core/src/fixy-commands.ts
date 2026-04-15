@@ -38,21 +38,26 @@ function phaseHeader(text: string): string {
 
 /** Dim styling for activity events */
 const DIM = '\x1b[2m';
+const GREEN = '\x1b[32m';
+const RED = '\x1b[31m';
+const YELLOW = '\x1b[33m';
 
-/** Map tool names to human-readable action labels */
-function toolAction(name: string, file?: string): string {
+/** Map tool names to human-readable action labels and icons */
+function toolAction(name: string, file?: string): { icon: string; action: string; label: string } {
   const n = name.toLowerCase().replace(/_/g, '');
   let action: string;
-  if (n === 'read' || n === 'view' || n === 'readfile') action = 'Reading';
-  else if (n === 'edit' || n === 'update' || n === 'editfile') action = 'Editing';
-  else if (n === 'write' || n === 'create' || n === 'writefile' || n === 'createfile') action = 'Creating';
-  else if (n === 'bash' || n === 'shell' || n === 'executecommand') action = 'Running';
-  else if (n === 'grep' || n === 'search' || n === 'searchfiles') action = 'Searching';
-  else if (n === 'glob' || n === 'listdirectory' || n === 'listdir') action = 'Listing';
-  else if (n === 'delete' || n === 'deletefile' || n === 'remove') action = 'Deleting';
-  else if (n === 'rename' || n === 'move' || n === 'movefile') action = 'Moving';
-  else action = name;
-  return file ? `${action} ${file}` : action;
+  let icon: string;
+  if (n === 'read' || n === 'view' || n === 'readfile') { action = 'Read'; icon = '📖'; }
+  else if (n === 'edit' || n === 'update' || n === 'editfile') { action = 'Edit'; icon = '✏️'; }
+  else if (n === 'write' || n === 'create' || n === 'writefile' || n === 'createfile') { action = 'Create'; icon = '📝'; }
+  else if (n === 'bash' || n === 'shell' || n === 'executecommand') { action = 'Run'; icon = '⚡'; }
+  else if (n === 'grep' || n === 'search' || n === 'searchfiles') { action = 'Search'; icon = '🔍'; }
+  else if (n === 'glob' || n === 'listdirectory' || n === 'listdir') { action = 'List'; icon = '📂'; }
+  else if (n === 'delete' || n === 'deletefile' || n === 'remove') { action = 'Delete'; icon = '🗑️'; }
+  else if (n === 'rename' || n === 'move' || n === 'movefile') { action = 'Move'; icon = '📦'; }
+  else { action = name; icon = '🔧'; }
+  const label = file ? `${action} ${file}` : action;
+  return { icon, action, label };
 }
 
 /** Mutable runtime toggle for thinking visibility (persisted via settings) */
@@ -74,24 +79,30 @@ export function initThinkingFlag(show: boolean): void {
   showThinkingFlag = show;
 }
 
-/** Render an AdapterEvent as a dim activity line */
+/** Render an AdapterEvent as an activity line */
 export function renderEvent(
   event: AdapterEvent,
   log: (stream: 'stdout' | 'stderr', chunk: string) => void,
 ): void {
   if (event.type === 'thinking') {
     if (!showThinkingFlag) return;
-    // Show first line of thinking, truncated
     const firstLine = event.text.split('\n')[0] ?? '';
     const truncated = firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine;
     if (truncated.length > 0) {
-      log('stdout', `  ${DIM}· ${truncated}${RESET}\n`);
+      log('stdout', `  ${DIM}💭 ${truncated}${RESET}\n`);
     }
   } else if (event.type === 'tool_start') {
-    const label = toolAction(event.name, event.file);
-    log('stdout', `  ${DIM}· ${label}${RESET}\n`);
+    const { icon, label } = toolAction(event.name, event.file);
+    log('stdout', `  ${YELLOW}○${RESET} ${DIM}${icon} ${label}${RESET}\n`);
+  } else if (event.type === 'tool_end') {
+    const { icon, label } = toolAction(event.name);
+    if (event.status === 'success') {
+      log('stdout', `  ${GREEN}✓${RESET} ${DIM}${icon} ${label}${RESET}\n`);
+    } else {
+      log('stdout', `  ${RED}✗${RESET} ${DIM}${icon} ${label} failed${RESET}\n`);
+    }
   }
-  // tool_end and content events are not rendered (content is already streamed via onLog)
+  // content events are not rendered here (already streamed via onLog)
 }
 
 export interface FixyCommandContext {
