@@ -725,11 +725,6 @@ export async function startRepl(params: ReplParams): Promise<void> {
           const choiceInput = await resolveWorkerChoice(lastMsg.content, interactiveSignal);
           if (choiceInput !== null) {
             await runTurn(choiceInput);
-            // After setting the worker, immediately trigger model selection for it
-            const adapterId = choiceInput.match(/@fixy \/worker (\w+)/)?.[1];
-            if (adapterId) {
-              await runTurn(`@fixy /model @${adapterId}`);
-            }
             return;
           }
         }
