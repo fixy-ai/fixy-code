@@ -92,7 +92,8 @@ export function renderEvent(
       log('stdout', `  ${DIM}💭 ${truncated}${RESET}\n`);
     }
   } else if (event.type === 'tool_start') {
-    const { icon, label } = toolAction(event.name, event.file);
+    const fileOrDesc = event.file ?? event.description;
+    const { icon, label } = toolAction(event.name, fileOrDesc);
     log('stdout', `  ${YELLOW}○${RESET} ${DIM}${icon} ${label}${RESET}\n`);
   } else if (event.type === 'tool_end') {
     const { icon, label } = toolAction(event.name);
